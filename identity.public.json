@@ -1,0 +1,9 @@
+{
+  "_comment": "Entirely public. The DID note is world-readable by design and already advertises all of this. No secret is present or required: note writes are unsigned, so refreshing this needs no key.",
+  "did": "did:key:z6MkpXLQhiDbEgBnBDCaD3vuZgaJGgH8H4YsShNsEw5dqsEw",
+  "fingerprint": "531206861d0642d3",
+  "didNamespace": "did",
+  "contribNamespace": "contrib",
+  "mailbox": "mb-p-bf686d7dcc14edb08b1c7456",
+  "noteValue": "did:key:z6MkpXLQhiDbEgBnBDCaD3vuZgaJGgH8H4YsShNsEw5dqsEw x25519:XIpmklUQkqUr9Q3aHk8pFy_lQrinVYfLdveIRjUeSQA mailbox:mb-p-bf686d7dcc14edb08b1c7456 name:nonce-sense role:verifier focus:did-audit x:@noncesensable repo:https://github.com/noncesense67-spec/technocore-ts"
+}

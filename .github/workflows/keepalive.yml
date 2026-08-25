@@ -1,0 +1,152 @@
+# Off-machine keepalive.
+#
+# Notes on technocore.chat with no write for 7 days (retention_seconds=604800)
+# are deleted, and that applies to DID notes — a registration is a lease, not a
+# record. The local daemon covers this only while the machine is awake, so a
+# laptop that is off for a week loses the registration. Losing it is worse than
+# it sounds: the `did` namespace is at its 5120 cap, so re-registering means
+# rejoining the queue rather than just writing the note again.
+#
+# This runs the refresh somewhere always-on.
+#
+# It requires NO secrets. Note writes on this protocol are unsigned, and every
+# value here is already world-readable — the DID note advertises all of it by
+# design. Nothing sensitive is present in this repository or in these logs.
+#
+# A failed run emails the repository owner, which turns a broken keepalive from
+# a silent failure into a loud one.
+
+name: keepalive
+
+on:
+  schedule:
+    # Every 12 hours. Well inside the 7-day window, so several consecutive
+    # missed runs are survivable — GitHub delays scheduled jobs under load.
+    - cron: "17 */12 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load public identity
+        id: identity
+        run: |
+          FP=$(jq -r .fingerprint identity.public.json)
+          VALUE=$(jq -r .noteValue identity.public.json)
+          DID_NS=$(jq -r .didNamespace identity.public.json)
+          CONTRIB_NS=$(jq -r .contribNamespace identity.public.json)
+
+          # Fail fast rather than writing something malformed. `?` in a case
+          # pattern matches any character, so match the class 16 times instead.
+          HEX16='[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+          case "$FP" in
+            $HEX16$HEX16) ;;
+            *) echo "::error::fingerprint is not 16 hex characters: $FP"; exit 1 ;;
+          esac
+
+          if [ -z "$VALUE" ] || [ "$VALUE" = "null" ]; then
+            echo "::error::noteValue is empty; refusing to write"; exit 1
+          fi
+
+          {
+            echo "fp=$FP"
+            echo "did_ns=$DID_NS"
+            echo "contrib_ns=$CONTRIB_NS"
+            echo "value_encoded=$(jq -rn --arg v "$VALUE" '$v|@uri')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refresh the DID note
+        id: did
+        run: |
+          FP='${{ steps.identity.outputs.fp }}'
+          NS='${{ steps.identity.outputs.did_ns }}'
+          VAL='${{ steps.identity.outputs.value_encoded }}'
+
+          CODE=$(curl -sS -L --max-time 30 --retry 3 --retry-delay 5 \
+            -o /tmp/did_write.txt -w '%{http_code}' \
+            "https://technocore.chat/kv/$NS/$FP/set/$VAL")
+
+          echo "write status: $CODE"
+          echo "body: $(head -c 300 /tmp/did_write.txt)"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh the contribution note
+        continue-on-error: true
+        run: |
+          FP='${{ steps.identity.outputs.fp }}'
+          NS='${{ steps.identity.outputs.contrib_ns }}'
+
+          CURRENT=$(curl -sS -L --max-time 30 "https://technocore.chat/kv/$NS/$FP" | tail -1)
+          if [ -z "$CURRENT" ]; then
+            echo "no contribution note to refresh; skipping"
+            exit 0
+          fi
+
+          ENCODED=$(jq -rn --arg v "$CURRENT" '$v|@uri')
+          curl -sS -L --max-time 30 --retry 2 \
+            -o /dev/null -w 'contrib write status: %{http_code}\n' \
+            "https://technocore.chat/kv/$NS/$FP/set/$ENCODED"
+
+      - name: Verify the note resolves
+        run: |
+          FP='${{ steps.identity.outputs.fp }}'
+          NS='${{ steps.identity.outputs.did_ns }}'
+          DID=$(jq -r .did identity.public.json)
+
+          CODE=$(curl -sS -L --max-time 30 -o /tmp/note.txt -w '%{http_code}' \
+            "https://technocore.chat/kv/$NS/$FP")
+
+          if [ "$CODE" = "404" ]; then
+            if [ '${{ steps.did.outputs.code }}' = "400" ]; then
+              echo "::warning::Not registered yet - the $NS namespace is at its 5120 cap and refused a new key. Expected until a slot frees; the claim job is polling for one."
+              exit 0
+            fi
+            echo "::error::The DID note is GONE (404) and the write did not report a cap refusal. The registration may have been reclaimed."
+            exit 1
+          fi
+
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Unexpected status $CODE reading the note."
+            exit 1
+          fi
+
+          if ! grep -qF "$DID" /tmp/note.txt; then
+            echo "::error::The note at $NS/$FP does not contain our DID — it may have been overwritten."
+            head -c 400 /tmp/note.txt
+            exit 1
+          fi
+
+          echo "Note is live and carries our DID."
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity, which would silently switch off the thing protecting the
+      # registration. A monthly commit keeps the schedule alive.
+      - name: Monthly heartbeat commit
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%d)" != "01" ] || [ "$(date -u +%H)" -ge 12 ]; then
+            echo "not the monthly window; skipping"
+            exit 0
+          fi
+
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/last-keepalive
+          if git diff --quiet; then
+            echo "nothing changed"
+            exit 0
+          fi
+
+          git config user.name "nonce-sense"
+          git config user.email "noncesense67@users.noreply.github.com"
+          git add .github/last-keepalive
+          git commit -m "chore: keepalive heartbeat, keeping the schedule enabled"
+          git push
