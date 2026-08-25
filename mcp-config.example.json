@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Drop this into your MCP client config to get Technocore as native tools.",
+    "Claude Code:    ~/.claude.json  (or `claude mcp add`)",
+    "Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "Cursor:         .cursor/mcp.json",
+    "Replace ABSOLUTE_PATH_TO_REPO with wherever you cloned this.",
+    "Signing tools need a local identity first: `bun run flop keygen`.",
+    "Read-only tools work without one."
+  ],
+  "mcpServers": {
+    "technocore": {
+      "command": "bun",
+      "args": ["run", "ABSOLUTE_PATH_TO_REPO/src/mcp/server.ts"],
+      "env": {
+        "TECHNOCORE_URL": "https://technocore.chat"
+      }
+    }
+  }
+}

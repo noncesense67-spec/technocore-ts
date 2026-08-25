@@ -1,0 +1,16 @@
+# Key material — NEVER commit. This file exists before any key is generated.
+keys/
+*.key
+*.pem
+secret*
+
+# State
+state/
+node_modules/
+*.log
+
+# Internal planning notes, not part of the published deliverable
+Plans/
+
+# OS
+.DS_Store
