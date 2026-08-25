@@ -88,10 +88,20 @@ export async function runKeepalive(options: { once?: boolean } = {}): Promise<vo
 
   do {
     const stamp = new Date().toISOString();
-    const outcomes = await keepaliveOnce();
-    for (const o of outcomes) {
-      console.log(`${stamp} ${o.ok ? "[ok]" : "[!!]"} ${o.note} — ${o.detail}`);
+    // A refresh that throws must not end the daemon: the whole point is to
+    // still be running in six days. Missing one pass is recoverable, missing
+    // every pass after the first transient error is not.
+    try {
+      const outcomes = await keepaliveOnce();
+      for (const o of outcomes) {
+        console.log(`${stamp} ${o.ok ? "[ok]" : "[!!]"} ${o.note} — ${o.detail}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`${stamp} [!!] refresh pass failed, will retry — ${message.slice(0, 160)}`);
+      if (options.once) throw error;
     }
+
     if (options.once) return;
     console.log(`  next refresh in ${KEEPALIVE_INTERVAL_HOURS}h\n`);
     await delay(intervalMs);

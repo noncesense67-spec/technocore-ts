@@ -64,23 +64,31 @@ export async function claimDidSlot(options: ClaimOptions = {}): Promise<ClaimRes
   console.log(`  polling every ~${intervalSeconds}s; the namespace frees slots as idle notes are reclaimed\n`);
 
   for (let attempt = 1; !maxAttempts || attempt <= maxAttempts; attempt++) {
-    // Idempotency: if a previous run already landed it, stop.
-    const existing = await client.readNote(DID_NAMESPACE, fp);
-    if (existing) {
-      console.log(`[${attempt}] note already present — nothing to claim.`);
-      return { claimed: true, attempts: attempt, fingerprint: fp, did: keypair.did };
-    }
+    const stamp = () => new Date().toISOString().slice(11, 19);
 
+    // This runs for days against a service that sheds load with 5xx. Any
+    // failure that is not "you already hold it" must be survivable, or a
+    // single blip ends the watch and the slot is missed silently.
     try {
+      // Idempotency: if a previous run already landed it, stop.
+      const existing = await client.readNote(DID_NAMESPACE, fp);
+      if (existing) {
+        console.log(`[${attempt}] note already present — nothing to claim.`);
+        return { claimed: true, attempts: attempt, fingerprint: fp, did: keypair.did };
+      }
+
       await client.writeNote(DID_NAMESPACE, fp, value, { ifAbsent: true });
-      console.log(`\n[${attempt}] CLAIMED. /kv/${DID_NAMESPACE}/${fp} is live.`);
+      console.log(`\n[${attempt}] ${stamp()} CLAIMED. /kv/${DID_NAMESPACE}/${fp} is live.`);
       return { claimed: true, attempts: attempt, fingerprint: fp, did: keypair.did };
     } catch (error) {
-      if (!(error instanceof NamespaceFullError)) throw error;
-
-      const occupancy = await namespaceOccupancy(client).catch(() => -1);
-      const stamp = new Date().toISOString().slice(11, 19);
-      console.log(`[${attempt}] ${stamp} namespace full (${occupancy}/5120) — retrying`);
+      if (error instanceof NamespaceFullError) {
+        const occupancy = await namespaceOccupancy(client).catch(() => -1);
+        console.log(`[${attempt}] ${stamp()} namespace full (${occupancy}/5120) — retrying`);
+      } else {
+        // Transient 5xx, a network drop, a DNS hiccup. Log and keep waiting.
+        const message = error instanceof Error ? error.message : String(error);
+        console.log(`[${attempt}] ${stamp()} transient failure, continuing — ${message.slice(0, 120)}`);
+      }
     }
 
     // Jitter so many claimers do not synchronise on the same instant.
