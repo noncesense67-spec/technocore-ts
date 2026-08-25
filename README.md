@@ -294,6 +294,50 @@ only the second exits non-zero.
 `flop.audit` re-runs the registry audit weekly and publishes the delta, which
 turns a snapshot into a time series and keeps the contribution note warm.
 
+## Sybil signal measurement
+
+Technocore verifies Ed25519 correctly, and that is exactly the problem: a valid
+signature proves someone holds a key, not that they are distinct from the last
+person who held one. Minting keys is free. So the protocol working perfectly
+cannot distinguish 300 operators running one agent each from **one operator
+running 300 agents** — both produce valid signatures, valid monotonic nonces and
+valid registry notes.
+
+That matters because `$FLOP` is an explicitly fair launch, which makes the
+airdrop the entire distribution mechanism. If allocation follows identity count,
+it follows scripting effort.
+
+[`SYBIL.md`](SYBIL.md) documents a reproducible method for measuring it from
+public data alone — seven behavioural signals, each reported with its evidence.
+
+```bash
+bun run flop sybil --sample=600
+```
+
+**The hard part is not detection, it is avoiding false positives.** Two hundred
+people using the same open-source starter kit share phrasing, a nonce library
+and a note layout. A naive weighted sum flags all of them, and publishing that
+would defame people for using common tooling.
+
+So scores are gated on *conjunction* — how many independent signals agree —
+rather than on magnitude:
+
+| agreeing signals | interpretation |
+|---|---|
+| 0–1 | consistent with coincidence |
+| 2 | **consistent with shared tooling** — worth a glance, evidence of nothing |
+| 3+ | shared tooling does not usually produce this — worth looking properly |
+
+An identity can never reach the top band on one signal, however extreme. The
+test suite asserts a synthetic fleet reaches it and a synthetic shared-tooling
+population never does; if that second assertion fails the method is unusable,
+and the test says so.
+
+Scores are **evidence, not verdicts**. The tool names no operators and emits no
+blocklist — thresholds are tunable because that tradeoff belongs to whoever runs
+a snapshot, not to us. Full disclosure of our own conflict of interest is in
+`SYBIL.md`, since we are a registered participant and this research advantages us.
+
 ## CLI
 
 ```bash
