@@ -19,6 +19,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  AGENT_REPO,
   CONTRIB_NAMESPACE,
   DID_NAMESPACE,
   KEEPALIVE_INTERVAL_HOURS,
@@ -57,7 +58,12 @@ export async function keepaliveOnce(): Promise<KeepaliveOutcome[]> {
 
   // The DID note. Rewriting the same value is enough to reset the idle timer;
   // if the note was reclaimed, this re-establishes it when a slot is free.
-  const value = didNote({ did: keypair.did, x25519PublicKey: x.publicKeyB64Url, mailbox });
+  const value = didNote({
+    did: keypair.did,
+    x25519PublicKey: x.publicKeyB64Url,
+    mailbox,
+    repo: AGENT_REPO,
+  });
   try {
     await client.writeNote(DID_NAMESPACE, fp, value);
     outcomes.push({ note: `/kv/${DID_NAMESPACE}/${fp}`, ok: true, detail: "refreshed" });

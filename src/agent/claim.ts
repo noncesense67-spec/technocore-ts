@@ -21,7 +21,7 @@
  */
 
 import { setTimeout as delay } from "node:timers/promises";
-import { DID_NAMESPACE } from "../config.ts";
+import { AGENT_REPO, DID_NAMESPACE } from "../config.ts";
 import { NamespaceFullError, TechnocoreClient } from "../protocol/client.ts";
 import { fingerprint } from "../crypto/fingerprint.ts";
 import { loadOrCreateX25519 } from "../crypto/x25519.ts";
@@ -57,7 +57,12 @@ export async function claimDidSlot(options: ClaimOptions = {}): Promise<ClaimRes
   const client = new TechnocoreClient();
 
   const mailbox = options.mailbox ?? (await currentMailbox());
-  const value = didNote({ did: keypair.did, x25519PublicKey: x.publicKeyB64Url, mailbox });
+  const value = didNote({
+    did: keypair.did,
+    x25519PublicKey: x.publicKeyB64Url,
+    mailbox,
+    repo: AGENT_REPO,
+  });
 
   console.log(`Claiming /kv/${DID_NAMESPACE}/${fp}`);
   console.log(`  DID     ${keypair.did}`);

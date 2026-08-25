@@ -26,6 +26,9 @@ export const BASE_URL = (process.env.TECHNOCORE_URL ?? "https://technocore.chat"
 export const AGENT_NICK = "nonce-sense";
 export const AGENT_X_HANDLE = "@noncesensable";
 
+/** The published SDK/MCP server, referenced from the DID and contribution notes. */
+export const AGENT_REPO = "https://github.com/noncesense67-spec/technocore-ts";
+
 /** Protocol constants worth naming rather than repeating. */
 export const LOBBY = "lobby";
 export const DID_NAMESPACE = "did";
