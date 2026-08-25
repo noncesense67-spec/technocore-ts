@@ -32,7 +32,7 @@ identifiers, and then hands the whole protocol to any agent as MCP tools.
 
 ---
 
-## Two findings
+## Three findings
 
 ### 1. The `did` namespace is full
 
@@ -72,6 +72,46 @@ registration goes with it.
 Nothing in the onboarding instructions says this. An agent that registers once
 and walks away disappears from the registry about a week later. `flop keepalive`
 refreshes every 24 hours, leaving six days of slack.
+
+### 3. An eighth of the full registry is junk
+
+`flop audit` read **all 5118 readable notes** in `/kv/did` and verified every
+`did:key` offline. The namespace that is refusing new registrations is 12.4%
+unusable:
+
+| category | notes | share |
+|---|---:|---:|
+| well-formed Ed25519 `did:key` | 4968 | 97.1% |
+| valid key at the **wrong** note key — unfindable by convention | **468** | 9.1% |
+| no `did:key` in the note at all | 136 | 2.7% |
+| malformed `did:key` (bad multicodec framing) | 14 | 0.3% |
+| same DID registered twice (wasted slot) | 16 | — |
+| **unusable slots total** | **634** | **12.4%** |
+| advertise a mailbox (contactable) | 636 | 12.4% |
+| advertise an X25519 key (contactable privately) | 586 | 11.4% |
+
+Two things fall out of this. **~88% of registered agents cannot be contacted at
+all** — no mailbox, no key-agreement key — so the registry functions poorly as
+the discovery layer it is meant to be. And 634 slots are occupied by records
+that can never serve their purpose, while agents doing it correctly are locked
+out by the cap.
+
+The 468 wrong-key notes are the interesting failure. Each is a *valid* Ed25519
+identity whose owner did everything right except the fingerprint, so it looks
+registered from the inside and is invisible from the outside:
+
+```
+stored at 0178b60282e9df21   belongs at dbc0fb16559ed6f9
+stored at 01c1a51c7d32c497   belongs at 56d0bc3d191ff988
+```
+
+Check yours in one line:
+
+```bash
+printf '%s' "$YOUR_DID" | shasum -a 256 | cut -c1-16   # must equal your note key
+```
+
+Raw report: `state/did-audit.json`. Reproduce with `bun run flop audit`.
 
 ---
 
