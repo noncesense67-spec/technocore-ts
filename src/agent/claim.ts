@@ -21,7 +21,9 @@
  */
 
 import { setTimeout as delay } from "node:timers/promises";
-import { AGENT_REPO, DID_NAMESPACE } from "../config.ts";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { AGENT_REPO, DID_NAMESPACE, STATE_DIR } from "../config.ts";
 import { NamespaceFullError, TechnocoreClient } from "../protocol/client.ts";
 import { fingerprint } from "../crypto/fingerprint.ts";
 import { loadOrCreateX25519 } from "../crypto/x25519.ts";
@@ -78,11 +80,13 @@ export async function claimDidSlot(options: ClaimOptions = {}): Promise<ClaimRes
       // Idempotency: if a previous run already landed it, stop.
       const existing = await client.readNote(DID_NAMESPACE, fp);
       if (existing) {
+        markClaimed(fp);
         console.log(`[${attempt}] note already present — nothing to claim.`);
         return { claimed: true, attempts: attempt, fingerprint: fp, did: keypair.did };
       }
 
       await client.writeNote(DID_NAMESPACE, fp, value, { ifAbsent: true });
+      markClaimed(fp);
       console.log(`\n[${attempt}] ${stamp()} CLAIMED. /kv/${DID_NAMESPACE}/${fp} is live.`);
       return { claimed: true, attempts: attempt, fingerprint: fp, did: keypair.did };
     } catch (error) {
@@ -119,4 +123,21 @@ async function currentMailbox(): Promise<string> {
   }
   const { randomBytes } = await import("node:crypto");
   return `mb-p-${randomBytes(12).toString("hex")}`;
+}
+
+/**
+ * Record that the slot was won. Health checks use this to tell "not registered
+ * yet" (expected, the namespace is full) from "was registered and is now gone"
+ * (an emergency — the note was reclaimed and the slot is back in contention).
+ */
+export function markClaimed(fp: string): void {
+  const path = join(STATE_DIR, "did-claimed");
+  if (existsSync(path)) return;
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(path, `${fp} ${new Date().toISOString()}\n`);
+}
+
+/** True if we have ever successfully held the DID note. */
+export function hasEverClaimed(): boolean {
+  return existsSync(join(STATE_DIR, "did-claimed"));
 }

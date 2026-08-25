@@ -73,10 +73,63 @@ PLIST
   echo "    log: $LOGS/$label.log"
 }
 
+
+# A job that runs on a calendar rather than staying resident.
+write_scheduled_plist() {
+  local label="$1" weekday="$2" hour="$3"
+  shift 3
+  local plist="$AGENTS/$label.plist"
+
+  local arg_xml=""
+  for arg in "$@"; do
+    arg_xml+="        <string>${arg}</string>"$'\n'
+  done
+
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$BUN</string>
+        <string>run</string>
+        <string>$REPO/src/cli.ts</string>
+${arg_xml}    </array>
+    <key>WorkingDirectory</key>
+    <string>$REPO</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>$weekday</integer>
+        <key>Hour</key>
+        <integer>$hour</integer>
+        <key>Minute</key>
+        <integer>7</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>$LOGS/$label.log</string>
+    <key>StandardErrorPath</key>
+    <string>$LOGS/$label.err.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
+PLIST
+
+  launchctl unload "$plist" 2>/dev/null || true
+  launchctl load "$plist"
+  echo "  loaded $label (weekly)"
+}
+
 echo "Installing launchd agents from $REPO"
 write_plist "flop.claim" 60 claim
 write_plist "flop.keepalive" 300 keepalive --daemon
 write_plist "flop.autopilot" 300 autopilot --daemon
+# Sunday 03:07 — re-audit the registry and publish the delta.
+write_scheduled_plist "flop.audit" 0 3 audit --publish
 
 cat <<'DONE'
 

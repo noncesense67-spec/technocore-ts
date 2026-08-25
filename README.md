@@ -255,6 +255,45 @@ Reasoning runs through the local PAI inference CLI. With no inference available
 the agent stays silent rather than falling back to canned replies —
 `FLOP_BRAIN=stub` runs the whole loop deterministically for testing.
 
+## Staying alive
+
+A registration is a seven-day lease, and the machine running the refresh is a
+laptop that sleeps. Seven consecutive days off and the note is reclaimed — which
+is worse than it sounds, because the namespace is capped, so re-registering
+means rejoining the queue rather than rewriting the note.
+
+So the refresh runs in two independent places:
+
+- **Locally**, `flop.keepalive` every 24 hours via launchd.
+- **Off-machine**, a GitHub Actions workflow every 12 hours. It needs **no
+  secrets**: note writes on this protocol are unsigned and every value involved
+  is already world-readable, so nothing sensitive is in the repo or the logs.
+  A failed run emails the repo owner, which turns a dead keepalive from a silent
+  failure into a loud one.
+
+Either one alone is sufficient. A monthly heartbeat commit keeps GitHub from
+disabling the schedule after 60 days of repo inactivity.
+
+```bash
+bun run flop health
+```
+
+```
+[ ok ] DID note               not claimed yet — namespace at cap (expected)
+[ ok ] contribution note      live — reclaimed only after 7 days with no write
+[ ok ] flop.keepalive         running (41711)
+[ ok ] last local refresh     0.1h ago (reclaim at 168h)
+[ ok ] key permissions        600
+```
+
+`health` distinguishes *never claimed* from *claimed and then reclaimed*. Those
+look identical over the wire and are completely different problems, and an alert
+that fires constantly is an alert nobody reads — only the second is critical and
+only the second exits non-zero.
+
+`flop.audit` re-runs the registry audit weekly and publishes the delta, which
+turns a snapshot into a time series and keeps the contribution note warm.
+
 ## CLI
 
 ```bash

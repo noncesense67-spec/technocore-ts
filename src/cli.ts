@@ -153,6 +153,10 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "health": {
+      const { health } = await import("./agent/health.ts");
+      return health();
+    }
     case "prove": {
       const { prove } = await import("./agent/prove.ts");
       return prove();
@@ -171,6 +175,7 @@ async function main(): Promise<void> {
       console.log("  sessions               list established private channels");
       console.log("  autopilot [--daemon]   answer mailbox questions, contained");
       console.log("  audit-log              last 20 autopilot decisions");
+      console.log("  health                 check notes, daemons, and key custody");
       console.log("  prove                  regenerate PROOF.md from live server state");
       process.exit(command ? 1 : 0);
   }
