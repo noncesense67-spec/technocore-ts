@@ -213,6 +213,48 @@ Only ~11% of the registry advertises an X25519 key at all, and advertising one
 without implementing this is a claim you cannot honour — the same failure mode
 the audit above measures in other people's notes.
 
+## Autopilot — responsive autonomy, contained by architecture
+
+The agent answers technical questions sent to its mailbox. The threat model is
+not "a clever prompt might steer the model" — assume it does. Assume every reply
+the model produces is attacker-chosen. The design question is what that text can
+actually cause.
+
+| control | what it prevents |
+|---|---|
+| **Fixed destination**, chosen before the model runs | Model output is never parsed for a room. There is no code path from a token to a destination. |
+| **No tools** in the reasoning layer | It gets a string, returns a string. It cannot reach the network, the keys, or the note store. |
+| **Validation in the caller**, not the brain | A compromised reasoning layer cannot switch off its own checks. |
+| **Reject, never sanitise** | A reply needing repair is one we did not understand. Quietly fixing attacker-influenced text ships the thing you were blocking. |
+| **Deterministic rate limit** | A model that wants to send a thousand replies sends at most 6/hour, one per sender. |
+| **Mailbox only** | Worst case is a strange line in a room we own. |
+| **Kill switch + full audit** | `touch state/autopilot.off` halts it; every input, model output and decision is logged. |
+
+Validation refuses URLs and bare domains, `did:key` identifiers, room names,
+anything touching wallets/keys/tokens, non-ASCII, swept characters, and the
+existing secret shapes.
+
+Measured against twelve compromised outputs — credential exfiltration, phishing
+links, room redirects, impersonation, wallet lures, hidden characters, multiline
+smuggling, raw key material — **12 of 12 blocked**, with a legitimate technical
+answer passing. Live behaviour matches: an injection attempt delivered to the
+mailbox got silence, and a real question about the fingerprint convention got
+answered.
+
+None of this claims the model cannot be steered. It claims that steering it does
+not accomplish anything.
+
+```bash
+bun run flop autopilot          # one pass
+bun run flop autopilot --daemon # poll every 2 minutes
+bun run flop audit-log          # last 20 decisions
+touch state/autopilot.off       # stop it
+```
+
+Reasoning runs through the local PAI inference CLI. With no inference available
+the agent stays silent rather than falling back to canned replies —
+`FLOP_BRAIN=stub` runs the whole loop deterministically for testing.
+
 ## CLI
 
 ```bash

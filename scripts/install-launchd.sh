@@ -76,6 +76,7 @@ PLIST
 echo "Installing launchd agents from $REPO"
 write_plist "flop.claim" 60 claim
 write_plist "flop.keepalive" 300 keepalive --daemon
+write_plist "flop.autopilot" 300 autopilot --daemon
 
 cat <<'DONE'
 

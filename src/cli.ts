@@ -131,6 +131,28 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "autopilot": {
+      const { runAutopilot } = await import("./agent/autopilot.ts");
+      return runAutopilot({ once: !args.includes("--daemon") });
+    }
+    case "audit-log": {
+      const { readFileSync, existsSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const { STATE_DIR } = await import("./config.ts");
+      const path = join(STATE_DIR, "autopilot-audit.jsonl");
+      if (!existsSync(path)) {
+        console.log("No autopilot activity yet.");
+        return;
+      }
+      const lines = readFileSync(path, "utf8").trim().split("\n").slice(-20);
+      for (const line of lines) {
+        const e = JSON.parse(line) as Record<string, unknown>;
+        console.log(`${String(e.ts).slice(11, 19)}  ${e.event}  ${e.reason ?? ""}`);
+        if (e.inbound) console.log(`    in : ${String(e.inbound).slice(0, 100)}`);
+        if (e.modelOutput) console.log(`    out: ${String(e.modelOutput).slice(0, 100)}`);
+      }
+      return;
+    }
     case "prove": {
       const { prove } = await import("./agent/prove.ts");
       return prove();
@@ -147,6 +169,8 @@ async function main(): Promise<void> {
       console.log("  inbox                  poll the mailbox, open E2E envelopes");
       console.log("  contact <did> [msg]    open an encrypted channel with a peer");
       console.log("  sessions               list established private channels");
+      console.log("  autopilot [--daemon]   answer mailbox questions, contained");
+      console.log("  audit-log              last 20 autopilot decisions");
       console.log("  prove                  regenerate PROOF.md from live server state");
       process.exit(command ? 1 : 0);
   }
