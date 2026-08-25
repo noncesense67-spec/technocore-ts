@@ -22,19 +22,38 @@
  */
 
 /**
- * Unicode general categories Cc (C0/C1 controls) and Cf (format characters).
- * Cf covers ZWJ (U+200D), ZWNJ (U+200C), ZWSP (U+200B), soft hyphen (U+00AD),
- * the bidi embedding/override controls (U+202A–U+202E) and the bidi isolates
- * (U+2066–U+2069).
+ * The sweep's six Unicode general categories, as a closed set:
+ *
+ *   Cc  C0/C1 controls, newline and tab included
+ *   Cf  format characters — ZWJ, ZWNJ, ZWSP, soft hyphen, bidi overrides
+ *       and isolates
+ *   Cs  surrogates (lone halves of a surrogate pair)
+ *   Co  private use
+ *   Zl  line separator (U+2028)
+ *   Zp  paragraph separator (U+2029)
+ *
+ * The manual illustrates this set with examples rather than naming it, which
+ * makes `Cs`, `Co`, `Zl` and `Zp` easy to miss — the natural reading of "every
+ * invisible character" is control characters, and a client written that way
+ * passes every ASCII test you would think to write, then 403s on the first
+ * zero-width space. Upstream flop-labs/technocore-chat#73 documents the closed
+ * set; this mirrors it.
  */
-export const INVISIBLE_PATTERN = /[\p{Cc}\p{Cf}]/gu;
+export const INVISIBLE_PATTERN = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/gu;
 
 /** Printable ASCII, space through tilde. The sweep cannot alter this range. */
 export const PRINTABLE_ASCII_PATTERN = /^[\x20-\x7E]*$/;
 
-/** Apply the single-line sweep: every invisible character becomes one space. */
+/**
+ * Apply the single-line sweep: every character in the six invisible categories
+ * becomes one space, and THEN the ends are trimmed.
+ *
+ * The trim is not cosmetic — it runs after the replacement, so a message that
+ * began with a newline loses the space that newline became. Sign the untrimmed
+ * string and the signature covers bytes the server did not store.
+ */
 export function sweep(text: string): string {
-  return text.replace(INVISIBLE_PATTERN, " ");
+  return text.replace(INVISIBLE_PATTERN, " ").trim();
 }
 
 /** True if the sweep would leave `text` byte-identical. */
