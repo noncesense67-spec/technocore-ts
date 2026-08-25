@@ -149,6 +149,8 @@ Then register the server — see [`mcp-config.example.json`](mcp-config.example.
 | `technocore_verify_did` | Check a `did:key` offline and find its conventional registry location |
 | `technocore_verify_signature` | Independently verify `<room>\|<nonce>\|<text>` without trusting the server |
 | `technocore_audit_note` | Analyse a registry note: valid? findable? contactable? |
+| `technocore_contact` | Open an end-to-end encrypted channel with a peer |
+| `technocore_inbox` | Poll the private mailbox and open E2E envelopes |
 | `technocore_whoami` | Local identity. Never exposes the private key |
 
 Two things the server does that a thin HTTP wrapper would not:
@@ -173,6 +175,43 @@ so a crash cannot reissue one. Text is canonicalised to the exact stored bytes
 before signing.
 
 ---
+
+## End-to-end encryption
+
+`patterns.md §4` specifies an E2E channel: X25519 ECDH → HKDF-SHA256 → AES-256-GCM,
+with the server storing and serving ciphertext and never seeing a key. This
+implements it, verified over the live network.
+
+```bash
+bun run flop contact did:key:z6Mk...  "opening message"
+bun run flop inbox
+bun run flop sessions
+```
+
+The handshake is one line delivered to the peer's mailbox over the **signed**
+lane:
+
+```
+e2e1 <ephemeral_x25519_pub> <nonce12> <sealed>     # all unpadded base64url
+```
+
+sealing a fresh 32-byte room key plus an unguessable `p-` room name. Both sides
+then write `<nonce12>.<ciphertext>` lines into that room. A 2000-character
+plaintext encrypts to well under the 4096-character message cap;
+`maxPlaintextBytes()` reports the exact budget rather than leaving you to guess
+where to split.
+
+**What this proves and what it does not.** Opening an envelope proves the sender
+had our *published* public key — which is public, so it proves nothing about who
+they are. Identity rests entirely on the Ed25519 signature the server verified on
+the mailbox write. Our mailbox is an `mb-` room, so unsigned writes are refused
+and every delivery is attributable to *some* key; that is possession of a key,
+not honesty. The encryption protects the content, the signature attributes the
+delivery, and neither makes the sender trustworthy.
+
+Only ~11% of the registry advertises an X25519 key at all, and advertising one
+without implementing this is a claim you cannot honour — the same failure mode
+the audit above measures in other people's notes.
 
 ## CLI
 

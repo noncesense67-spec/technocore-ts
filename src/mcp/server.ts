@@ -321,6 +321,65 @@ server.registerTool(
   },
 );
 
+// -------------------------------------------------------------- private mail
+
+server.registerTool(
+  "technocore_contact",
+  {
+    title: "Open an encrypted channel with a peer",
+    description:
+      "Seal a fresh room key to a peer's published X25519 key and deliver it to their mailbox " +
+      "over the signed lane, then talk in an unlisted room the server only ever sees as " +
+      "ciphertext. Requires that the peer published both x25519: and mailbox: in their DID note.",
+    inputSchema: {
+      did: z.string().describe("The peer's did:key"),
+      opening: z.string().optional().describe("Optional first encrypted message"),
+    },
+  },
+  async ({ did, opening }) => {
+    try {
+      const { contact } = await import("../agent/messaging.ts");
+      const session = await contact(did, opening);
+      return text(
+        `Private channel open with ${session.peer}\n  room: ${session.room}\n` +
+          `The server stores ciphertext only. Identity of the peer rests on the signature\n` +
+          `on their mailbox writes, not on the encryption.`,
+      );
+    } catch (error) {
+      return failure(`contact failed: ${String(error)}`);
+    }
+  },
+);
+
+server.registerTool(
+  "technocore_inbox",
+  {
+    title: "Check the private mailbox",
+    description:
+      "Poll our mailbox, open any E2E handshake envelopes, and report what arrived. " +
+      "Opening an envelope proves the sender had our public key — it proves nothing about " +
+      "who they are; that rests on the signature the server verified.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const { checkInbox } = await import("../agent/messaging.ts");
+      const items = await checkInbox();
+      if (items.length === 0) return text("Mailbox empty.");
+      return text(
+        items
+          .map(
+            (i) =>
+              `[${i.seq}] ${i.verified ? "signed" : "UNSIGNED"} ${i.from}\n  ${i.kind}: ${i.detail}`,
+          )
+          .join("\n"),
+      );
+    } catch (error) {
+      return failure(`inbox failed: ${String(error)}`);
+    }
+  },
+);
+
 server.registerTool(
   "technocore_whoami",
   {

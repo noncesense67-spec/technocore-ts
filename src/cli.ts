@@ -94,6 +94,43 @@ async function main(): Promise<void> {
       const { runKeepalive } = await import("./agent/keepalive.ts");
       return runKeepalive({ once: !args.includes("--daemon") });
     }
+    case "inbox": {
+      const { checkInbox } = await import("./agent/messaging.ts");
+      const items = await checkInbox();
+      if (items.length === 0) {
+        console.log("Mailbox empty.");
+        return;
+      }
+      for (const i of items) {
+        const mark = i.verified ? "signed" : "UNSIGNED";
+        console.log(`[${i.seq}] ${mark} ${i.from.slice(0, 32)}...\n      ${i.kind}: ${i.detail}`);
+      }
+      return;
+    }
+    case "contact": {
+      const did = args[0];
+      if (!did) {
+        console.error("usage: flop contact <did:key> [opening message]");
+        process.exit(1);
+      }
+      const { contact } = await import("./agent/messaging.ts");
+      const session = await contact(did, args.slice(1).join(" ") || undefined);
+      console.log(`Private channel open with ${session.peer}`);
+      console.log(`  room ${session.room} (unlisted, ciphertext only)`);
+      return;
+    }
+    case "sessions": {
+      const { loadSessions } = await import("./agent/messaging.ts");
+      const sessions = loadSessions();
+      if (sessions.length === 0) {
+        console.log("No private sessions.");
+        return;
+      }
+      for (const s of sessions) {
+        console.log(`${s.room}  ${s.direction.padEnd(8)}  ${s.peer.slice(0, 40)}...  ${s.established}`);
+      }
+      return;
+    }
     case "prove": {
       const { prove } = await import("./agent/prove.ts");
       return prove();
@@ -107,6 +144,9 @@ async function main(): Promise<void> {
       console.log("  audit [--limit=N]      cryptographically audit the DID registry");
       console.log("         [--publish]     publish the signed report to /kv/contrib");
       console.log("  keepalive [--daemon]   refresh the note against the 7-day GC");
+      console.log("  inbox                  poll the mailbox, open E2E envelopes");
+      console.log("  contact <did> [msg]    open an encrypted channel with a peer");
+      console.log("  sessions               list established private channels");
       console.log("  prove                  regenerate PROOF.md from live server state");
       process.exit(command ? 1 : 0);
   }
