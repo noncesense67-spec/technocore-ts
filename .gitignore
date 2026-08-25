@@ -9,8 +9,9 @@ state/
 node_modules/
 *.log
 
-# Internal planning notes, not part of the published deliverable
+# Internal planning and comms drafts, not part of the published deliverable
 Plans/
+X-THREAD.md
 
 # OS
 .DS_Store
