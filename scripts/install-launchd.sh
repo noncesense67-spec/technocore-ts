@@ -129,6 +129,10 @@ write_plist "flop.claim" 60 claim
 write_plist "flop.keepalive" 300 keepalive --daemon
 write_plist "flop.autopilot" 300 autopilot --daemon
 # Sunday 03:07 — re-audit the registry and publish the delta.
+# Every ~10 min: hold the room name against the 7-day note reclaim, and open
+# the room the moment a slot frees in the capped room namespace.
+write_plist "flop.rooms" 600 rooms
+
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 
 cat <<'DONE'

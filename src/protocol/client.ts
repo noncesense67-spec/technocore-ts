@@ -116,6 +116,7 @@ export class TechnocoreClient {
     bucket: "read" | "write",
     init?: RequestInit,
     attempt = 0,
+    opts: { retry5xx?: boolean } = {},
   ): Promise<{ status: number; body: string }> {
     await this.limiter.acquire(bucket);
     this.trace.push(url);
@@ -126,7 +127,7 @@ export class TechnocoreClient {
     } catch (cause) {
       if (attempt < 2) {
         await sleep(500 * (attempt + 1));
-        return this.request(url, bucket, init, attempt + 1);
+        return this.request(url, bucket, init, attempt + 1, opts);
       }
       throw new ProtocolError(`network failure: ${String(cause)}`, 0, "", url);
     }
@@ -135,15 +136,15 @@ export class TechnocoreClient {
 
     if (response.status === 429) {
       this.limiter.observe429(body, response.headers.get("retry-after"));
-      if (attempt < 3) return this.request(url, bucket, init, attempt + 1);
+      if (attempt < 3) return this.request(url, bucket, init, attempt + 1, opts);
       throw new ProtocolError("rate limited after retries", 429, body, url);
     }
 
     // The service runs hot and sheds load with transient 5xx. Retry with
     // exponential backoff rather than surfacing a failure the next call fixes.
-    if (response.status >= 500 && attempt < 3) {
+    if (response.status >= 500 && attempt < 3 && opts.retry5xx !== false) {
       await sleep(400 * 2 ** attempt);
-      return this.request(url, bucket, init, attempt + 1);
+      return this.request(url, bucket, init, attempt + 1, opts);
     }
 
     this.limiter.observeBody(body);
@@ -321,19 +322,33 @@ export class TechnocoreClient {
     namespace: string,
     key: string,
     value: string,
+    options: { ifAbsent?: boolean } = {},
+    attempt = 0,
   ): Promise<WriteResult> {
     const stored = canonicaliseOutbound(value, "note");
     assertNoSecrets(stored, "note");
 
+    // room-owners and room-allow share one replay counter per room, and the
+    // allow-list nonce must exceed the claim nonce — so always read it fresh.
     const counter = await this.readNote("room-nonce", key);
     const nonce = BigInt(counter?.text.trim() || "0") + 1n;
     const signature = signNote(keypair, namespace, key, nonce, stored);
     const url = this.url(
       `/kv/${seg(namespace)}/${seg(key)}/set-signed/${seg(keypair.did)}/${seg(signature)}/${nonce}/${seg(stored)}`,
+      options.ifAbsent ? { if_absent: 1 } : undefined,
     );
 
-    const { status, body } = await this.request(url, "write");
-    if (status !== 200) throw new ProtocolError("signed note write failed", status, body, url);
+    const { status, body } = await this.request(url, "write", undefined, 0, { retry5xx: false });
+
+    // A signed ownership URL is single-use. If it fails we must NOT replay it:
+    // a transient 5xx can mean the write landed and only the reply was lost, and
+    // replaying then burns a consumed nonce for a 403. Re-read the counter and
+    // sign a fresh, higher one instead.
+    if (status !== 200 && attempt < 3) {
+      await sleep(400 * 2 ** attempt);
+      return this.writeNoteSigned(keypair, namespace, key, value, options, attempt + 1);
+    }
+    if (status !== 200) throw new ProtocolError(`signed note write failed (${status}): ${body.trim().slice(0, 160)}`, status, body, url);
     return { ok: true, status, body, url };
   }
 

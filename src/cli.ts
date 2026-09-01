@@ -153,6 +153,10 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "rooms": {
+      const { tendRooms } = await import("./agent/rooms.ts");
+      return tendRooms();
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
@@ -176,6 +180,7 @@ async function main(): Promise<void> {
       console.log("  autopilot [--daemon]   answer mailbox questions, contained");
       console.log("  audit-log              last 20 autopilot decisions");
       console.log("  health                 check notes, daemons, and key custody");
+      console.log("  rooms                  hold room names, open them when a slot frees");
       console.log("  prove                  regenerate PROOF.md from live server state");
       process.exit(command ? 1 : 0);
   }
