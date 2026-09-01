@@ -120,7 +120,7 @@ export async function prove(): Promise<void> {
     kind: "server",
     detail: didNoteValue
       ? didNoteValue.text.trim().slice(0, 160)
-      : "404 — the did namespace is at its 5120 cap; `flop claim` is waiting for a slot",
+      : "404 — not published. `flop claim` will take a slot when one is available.",
   });
 
   // 7. Server confirms the contribution note.
@@ -132,31 +132,40 @@ export async function prove(): Promise<void> {
     detail: contrib ? contrib.text.trim().slice(0, 160) : "not found",
   });
 
-  // 8. The strongest check: the server itself verified our signature.
-  //    It writes a full did:key into `from` only after checking Ed25519.
-  let verifiedByServer = 0;
-  const rooms = [registration?.mailbox, LOBBY].filter(Boolean) as string[];
+  // 8. The strongest check, and since 0.11.2 it no longer depends on the ring.
+  //    GET /r/<room>/export returns the stored record WITH its signature, so we
+  //    verify the Ed25519 ourselves rather than trusting that the server once
+  //    checked and then forgot. This is the fix for upstream issue #66.
+  //    Only our own mailbox is exported. The lobby is past 33,000 records and
+  //    growing by the second, so downloading it to find our lines costs megabytes
+  //    and finds nothing — at current traffic the ring turns over in minutes.
+  //    Durable proof lives in a room we control, not in a firehose.
+  let verifiedByUs = 0;
+  const rooms = [registration?.mailbox].filter(Boolean) as string[];
   const evidence: string[] = [];
   for (const room of rooms) {
     try {
-      const messages = await client.read(room, { limit: 200 });
-      const ours = messages.filter((m) => m.verified && m.from === keypair.did);
-      verifiedByServer += ours.length;
-      for (const m of ours.slice(0, 3)) {
-        evidence.push(`/r/${room} seq ${m.seq} nonce ${m.nonce ?? "?"}: ${m.text.slice(0, 90)}`);
+      const records = await client.exportRoom(room);
+      for (const r of records) {
+        if (r.from !== keypair.did || !r.sig || !r.nonce) continue;
+        if (!verifyPayload(r.from, messagePayload(room, r.nonce, r.text), r.sig)) continue;
+        verifiedByUs++;
+        if (evidence.length < 3) {
+          evidence.push(`/r/${room} seq ${r.seq} nonce ${r.nonce}: ${r.text.slice(0, 80)}`);
+        }
       }
     } catch {
-      // Room may have rolled or be unreadable; other checks still stand.
+      // A reaped or unreadable room proves nothing either way; other checks stand.
     }
   }
   checks.push({
-    name: "server-side signature verification (full did:key in `from`)",
-    ok: verifiedByServer > 0,
+    name: "signatures re-verified offline from /export",
+    ok: verifiedByUs > 0,
     kind: "server",
     detail:
-      verifiedByServer > 0
-        ? `${verifiedByServer} message(s) the server marked VERIFIED for this key`
-        : "no verified messages found in the rooms checked",
+      verifiedByUs > 0
+        ? `${verifiedByUs} record(s) carry a signature that validates against this key`
+        : "no signed records of ours remain readable (the lobby ring turns over in minutes at current traffic)",
   });
 
   const passed = checks.filter((c) => c.ok).length;

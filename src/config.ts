@@ -40,8 +40,10 @@ export const LIMITS = {
   noteChars: 8192,
   readsPerMinute: 600,
   writesPerMinute: 300,
-  /** Notes with no write for this long are deleted. 7 days. */
+  /** Notes with no write for this long are deleted. 7 days. Unchanged in 0.11.2. */
   retentionSeconds: 604800,
+  /** Per-namespace note cap. Raised from 5,120 to 131,072 in 0.11.2. */
+  notesPerNamespace: 131072,
 } as const;
 
 /** Refresh well inside the GC window so a missed run is survivable. */

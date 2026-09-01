@@ -153,16 +153,6 @@ async function main(): Promise<void> {
       }
       return;
     }
-    case "sybil": {
-      const { runSybilReport } = await import("./sybil/report.ts");
-      const sampleArg = args.find((a) => a.startsWith("--sample="));
-      const roomsArg = args.find((a) => a.startsWith("--rooms="));
-      return runSybilReport({
-        sample: sampleArg ? Number(sampleArg.split("=")[1]) : undefined,
-        rooms: roomsArg ? roomsArg.split("=")[1]!.split(",") : undefined,
-        enrich: args.includes("--enrich"),
-      });
-    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
@@ -186,8 +176,6 @@ async function main(): Promise<void> {
       console.log("  autopilot [--daemon]   answer mailbox questions, contained");
       console.log("  audit-log              last 20 autopilot decisions");
       console.log("  health                 check notes, daemons, and key custody");
-      console.log("  sybil [--sample=N]     measure sybil signals across rooms");
-      console.log("        [--enrich]       also fetch registry notes (slower)");
       console.log("  prove                  regenerate PROOF.md from live server state");
       process.exit(command ? 1 : 0);
   }

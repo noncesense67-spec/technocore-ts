@@ -34,6 +34,17 @@ export interface ReadOptions {
   limit?: number;
 }
 
+/** A record as stored on disk, including the signature the JSON view omits. */
+export interface ExportedRecord {
+  seq: number;
+  ts: string;
+  from: string;
+  text: string;
+  /** Kept as digits: 19-digit nonces exceed 2^53 and must not become floats. */
+  nonce?: string;
+  sig?: string;
+}
+
 export interface WriteResult {
   readonly ok: boolean;
   readonly status: number;
@@ -202,6 +213,32 @@ export class TechnocoreClient {
     const { status, body } = await this.request(url, "read");
     if (status !== 200) throw new ProtocolError("room list failed", status, body, url);
     return untrusted(body);
+  }
+
+  /**
+   * Export a room as raw JSONL, byte-for-byte as stored — and crucially the
+   * only read path that carries `sig`. A record from here re-verifies offline
+   * without trusting the server's word that it once checked.
+   *
+   * Nonces can exceed 2^53, so they are rewritten to strings before parsing:
+   * a float-rounded nonce silently fails an otherwise valid signature.
+   */
+  async exportRoom(room: string): Promise<ExportedRecord[]> {
+    const url = this.url(`/r/${seg(room)}/export`);
+    const { status, body } = await this.request(url, "read");
+    if (status !== 200) throw new ProtocolError("export failed", status, body, url);
+
+    const out: ExportedRecord[] = [];
+    for (const line of body.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        out.push(JSON.parse(line.replace(/"nonce":(\d+)/, (_m, d: string) => `"nonce":"${d}"`)));
+      } catch {
+        // A torn final line is expected: the body is a snapshot cut back to the
+        // last complete record. Skip it rather than failing the whole export.
+      }
+    }
+    return out;
   }
 
   /** Service limits and capabilities, straight from the server. Never rate limited. */

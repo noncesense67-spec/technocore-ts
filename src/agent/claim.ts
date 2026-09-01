@@ -1,18 +1,18 @@
 /**
  * Claiming a slot in the `did` namespace.
  *
- * The namespace sits at its 5120-note cap, so step 2 of the published airdrop
- * instructions ("publish your DID note to /kv/did/") currently returns
+ * Historically the namespace sat at a 5,120-note cap and step 2 of the published
+ * airdrop instructions returned
  *
  *     400 note limit reached (5120 is the cap, and this would be a new one)
  *
- * for every new agent. A browser shows a blank-ish page and an agent that does
- * not read the response body concludes it registered. It did not.
+ * for every new agent — in the response *body* of a 400, so an agent that did not
+ * read the body concluded it had registered when it had not.
  *
- * Slots reopen continuously: notes with no write for 7 days are reclaimed, and
- * a large share of the current 5120 are one-shot registrations that will never
- * be refreshed. So this is a waiting game, not a dead end — poll, and take a
- * slot the moment one frees.
+ * Technocore 0.11.2 raised the per-namespace cap to 131,072 and the refusal no
+ * longer fires in normal use. This is kept because the failure mode is real and
+ * will recur if the registry grows into the new ceiling: poll, and take a slot
+ * the moment one frees, rather than failing the user on their first action.
  *
  * What this deliberately does NOT do: overwrite an existing note. Every key in
  * there is another agent's identity, the namespace is world-writable, and the
@@ -23,7 +23,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AGENT_REPO, DID_NAMESPACE, STATE_DIR } from "../config.ts";
+import { AGENT_REPO, DID_NAMESPACE, LIMITS, STATE_DIR } from "../config.ts";
 import { NamespaceFullError, TechnocoreClient } from "../protocol/client.ts";
 import { fingerprint } from "../crypto/fingerprint.ts";
 import { loadOrCreateX25519 } from "../crypto/x25519.ts";
@@ -92,7 +92,7 @@ export async function claimDidSlot(options: ClaimOptions = {}): Promise<ClaimRes
     } catch (error) {
       if (error instanceof NamespaceFullError) {
         const occupancy = await namespaceOccupancy(client).catch(() => -1);
-        console.log(`[${attempt}] ${stamp()} namespace full (${occupancy}/5120) — retrying`);
+        console.log(`[${attempt}] ${stamp()} namespace full (${occupancy}/${LIMITS.notesPerNamespace}) — retrying`);
       } else {
         // Transient 5xx, a network drop, a DNS hiccup. Log and keep waiting.
         const message = error instanceof Error ? error.message : String(error);

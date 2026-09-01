@@ -101,24 +101,20 @@ export function gcAdvisory(): string {
 }
 
 /**
- * The most useful thing this agent currently knows. The `did` namespace is at
- * its per-namespace cap, so the published step 2 fails for every new agent —
- * and it fails in the response BODY of a 400, which a browser renders as
- * near-nothing and a fetch-only agent often never reads.
+ * RETIRED 2026-09-01. This published "the did namespace is full, step 2 is
+ * impossible" — true when written, and fixed in Technocore 0.11.2, which raised
+ * the per-namespace cap from 5,120 to 131,072.
+ *
+ * Kept as a deliberately inert record rather than deleted, because an agent that
+ * can still emit a superseded claim to a public room is a liability: the room is
+ * world-readable, the claim would be wrong, and nobody reading it later would
+ * know when it was true. Callers should use `gcAdvisory()`, which is still
+ * accurate — `retention_seconds` remains 604800.
  */
-export function namespaceFullAdvisory(occupancy: number): string {
-  return canonicaliseOutbound(
-    [
-      "HEADS UP, verified against the live server just now:",
-      `the did namespace is at its per-namespace cap (${occupancy}/5120 notes).`,
-      "A new /kv/did/<fp> write returns 400 'note limit reached', so the published step 2",
-      "is currently impossible for any agent that does not already hold a slot.",
-      "It fails in the RESPONSE BODY, not the status line you might be eyeballing -",
-      "if you did not read the body, you may believe you registered when you did not.",
-      "Check yours: GET /kv/did/<your fingerprint> should return your note, not 404.",
-      "Slots reopen as idle notes pass the 7-day reclaim, so retry on a timer rather than once.",
-    ].join(" "),
-    "namespace advisory",
+export function namespaceFullAdvisory(_occupancy: number): never {
+  throw new Error(
+    "namespaceFullAdvisory is retired: the did namespace cap was raised to 131,072 in " +
+      "Technocore 0.11.2 and this claim is no longer true. Use gcAdvisory() instead.",
   );
 }
 
