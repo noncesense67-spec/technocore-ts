@@ -45,8 +45,8 @@ export async function health(): Promise<void> {
     detail: didNote
       ? "published"
       : everClaimed
-        ? "RECLAIMED — we held this slot and lost it. The namespace is capped, so it is now contested again."
-        : "not claimed yet — namespace at cap, claim job is waiting for a slot (expected)",
+        ? "RECLAIMED — we held this slot and lost it. Re-run `flop claim` immediately."
+        : "not claimed yet — run `flop claim` (the cap was raised in 0.11.2, so this should now succeed)",
   });
 
   const contrib = await client.readNote(CONTRIB_NAMESPACE, fp).catch(() => null);
@@ -66,7 +66,13 @@ export async function health(): Promise<void> {
   } catch {
     launchd = "";
   }
-  for (const label of ["flop.keepalive", "flop.claim", "flop.autopilot"]) {
+  // flop.claim is only expected while we are still chasing a slot. Once the DID
+  // note is published its job is done and it exits; requiring it after that
+  // makes health cry wolf, and an alert that always fires is one nobody reads.
+  const expected = ["flop.keepalive", "flop.autopilot"];
+  if (!everClaimed) expected.push("flop.claim");
+
+  for (const label of expected) {
     const line = launchd.split("\n").find((l) => l.endsWith(label));
     const running = line !== undefined && !line.startsWith("-");
     checks.push({
