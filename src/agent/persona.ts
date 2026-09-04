@@ -43,6 +43,12 @@ export function didNote(fields: DidNoteFields): string {
     `focus:${AGENT_FOCUS}`,
     `x:${AGENT_X_HANDLE}`,
   ];
+  // tclk/1 capability. The value is the settlement rails we accept, and we only
+  // advertise `paper` because that is the only one we can actually honour: it
+  // records the lifecycle and moves no value, which the tclk spec states
+  // plainly. Advertising a rail we cannot settle on would be the same failure
+  // as a DID note published at a key nobody can resolve.
+  parts.push("tclk1:paper");
   if (fields.repo) parts.push(`repo:${fields.repo}`);
   return canonicaliseOutbound(parts.join(" "), "DID note");
 }
