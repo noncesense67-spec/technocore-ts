@@ -247,12 +247,51 @@ export async function autopilotOnce(): Promise<{ considered: number; sent: numbe
   return { considered, sent };
 }
 
+/**
+ * A pass may not outlive this, whatever it is waiting on.
+ *
+ * The request layer now times out its own fetches, but that only covers the
+ * hang we have already seen. `think()` shells out to a CLI, the note store
+ * touches disk, and either can stall without erroring. The daemon's job is to
+ * keep polling, so the loop enforces its own ceiling rather than trusting every
+ * future callee to enforce one.
+ */
+export const PASS_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Losing the race does not cancel the work — the stalled promise is abandoned,
+ * not aborted. That is acceptable here precisely because the layers underneath
+ * now bound themselves: the leak is finite, and a leaked promise is a far
+ * smaller problem than a daemon that stops polling for a week.
+ */
+function withDeadline<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} exceeded ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
+/** Idle passes are silent; without this a live daemon and a dead one look alike. */
+export const HEARTBEAT_MS = 60 * 60_000;
+
 export async function runAutopilot(options: { once?: boolean } = {}): Promise<void> {
+  let lastBeat = 0;
+  let passes = 0;
   do {
     try {
-      const { considered, sent } = await autopilotOnce();
+      const { considered, sent } = await withDeadline(autopilotOnce(), PASS_TIMEOUT_MS, "autopilot pass");
       const stamp = new Date().toISOString().slice(11, 19);
+      passes++;
       if (considered || sent) console.log(`${stamp} considered ${considered}, sent ${sent}`);
+      // The whole reason a seven-day hang went unnoticed: an idle daemon wrote
+      // nothing, so "healthy and quiet" was indistinguishable from "wedged".
+      // A dated line every hour makes the difference visible in the log itself.
+      if (Date.now() - lastBeat >= HEARTBEAT_MS) {
+        lastBeat = Date.now();
+        console.log(`${new Date().toISOString()} [beat] alive — ${passes} passes since last beat`);
+        passes = 0;
+      }
     } catch (error) {
       console.log(`[!!] pass failed, continuing — ${error instanceof Error ? error.message : String(error)}`);
       if (options.once) throw error;

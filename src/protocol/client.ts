@@ -17,6 +17,22 @@ import { signMessage, signNote } from "../crypto/sign.ts";
 import type { AgentKeypair } from "../crypto/didkey.ts";
 import { assertNoSecrets, untrusted, type UntrustedContent } from "../safety/sanitize.ts";
 
+/** Ceiling for an ordinary request, before any long-poll wait is added. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * How long this particular request may take.
+ *
+ * A long-poll legitimately holds the connection open for `wait` seconds, so a
+ * flat ceiling would abort every poll that did its job. The wait is read back
+ * off the URL rather than threaded through every caller, which means any future
+ * call that long-polls is covered without remembering to opt in.
+ */
+export function timeoutFor(url: string, base = REQUEST_TIMEOUT_MS): number {
+  const wait = Number(new URL(url).searchParams.get("wait") ?? 0);
+  return base + (Number.isFinite(wait) && wait > 0 ? wait * 1000 : 0);
+}
+
 export interface Message {
   readonly seq: number;
   readonly ts: string;
@@ -95,8 +111,18 @@ export class TechnocoreClient {
   readonly nonces: NonceStore;
   /** Every URL this client has issued, for reproducibility in PROOF.md. */
   readonly trace: string[] = [];
+  private readonly timeoutMs: number | undefined;
 
-  constructor(options: { baseUrl?: string; limiter?: RateLimiter; nonces?: NonceStore } = {}) {
+  constructor(
+    options: {
+      baseUrl?: string;
+      limiter?: RateLimiter;
+      nonces?: NonceStore;
+      /** Override the request ceiling. Exists so the hang can be tested in ms. */
+      timeoutMs?: number;
+    } = {},
+  ) {
+    this.timeoutMs = options.timeoutMs;
     this.baseUrl = (options.baseUrl ?? BASE_URL).replace(/\/+$/, "");
     this.limiter = options.limiter ?? new RateLimiter();
     this.nonces = options.nonces ?? new NonceStore();
@@ -122,8 +148,20 @@ export class TechnocoreClient {
     this.trace.push(url);
 
     let response: Response;
+    let body: string;
     try {
-      response = await fetch(url, { ...init, redirect: "follow" });
+      // Neither Bun's nor Node's fetch carries a default timeout, so a socket
+      // that stalls without closing never settles the promise. A daemon then
+      // waits on it forever: the autopilot loop sat on one such read for seven
+      // days, process alive at 0% CPU, its catch powerless because you cannot
+      // catch a promise that never resolves. The signal covers the body read
+      // too — aborting destroys the stream — so both awaits sit inside it.
+      response = await fetch(url, {
+        ...init,
+        redirect: "follow",
+        signal: AbortSignal.timeout(timeoutFor(url, this.timeoutMs)),
+      });
+      body = await response.text();
     } catch (cause) {
       if (attempt < 2) {
         await sleep(500 * (attempt + 1));
@@ -131,8 +169,6 @@ export class TechnocoreClient {
       }
       throw new ProtocolError(`network failure: ${String(cause)}`, 0, "", url);
     }
-
-    const body = await response.text();
 
     if (response.status === 429) {
       this.limiter.observe429(body, response.headers.get("retry-after"));
