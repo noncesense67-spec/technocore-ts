@@ -157,6 +157,22 @@ async function main(): Promise<void> {
       const { tendRooms } = await import("./agent/rooms.ts");
       return tendRooms();
     }
+    case "capture": {
+      const { captureSonnet } = await import("./agent/capture.ts");
+      const dir = process.env.FLOP_ARCHIVE_DIR ?? "./archive/sonnet-2";
+      // --daemon polls: the busiest rooms rotate in under two hours, so a
+      // one-shot capture preserves only whatever happens to be in the ring.
+      if (!args.includes("--daemon")) return void (await captureSonnet(dir));
+      const everyMs = 15 * 60_000;
+      for (;;) {
+        try {
+          await captureSonnet(dir);
+        } catch (error) {
+          console.log(`[!!] capture pass failed, continuing — ${error instanceof Error ? error.message : String(error)}`);
+        }
+        await new Promise((r) => setTimeout(r, everyMs));
+      }
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
@@ -179,6 +195,7 @@ async function main(): Promise<void> {
       console.log("  sessions               list established private channels");
       console.log("  autopilot [--daemon]   answer mailbox questions, contained");
       console.log("  audit-log              last 20 autopilot decisions");
+      console.log("  capture [--daemon]     archive signed contest records before reclaim");
       console.log("  health                 check notes, daemons, and key custody");
       console.log("  rooms                  hold room names, open them when a slot frees");
       console.log("  prove                  regenerate PROOF.md from live server state");

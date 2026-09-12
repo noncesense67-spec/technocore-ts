@@ -15,3 +15,7 @@ X-THREAD.md
 
 # OS
 .DS_Store
+
+# Captured Technocore records — perishable source data, ~17MB/day.
+# Storage/publication target still undecided; do not bloat git with it.
+archive/

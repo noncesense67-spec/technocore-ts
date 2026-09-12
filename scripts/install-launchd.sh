@@ -132,6 +132,9 @@ write_plist "flop.autopilot" 300 autopilot --daemon
 # Every ~10 min: hold the room name against the 7-day note reclaim, and open
 # the room the moment a slot frees in the capped room namespace.
 write_plist "flop.rooms" 600 rooms
+# Every 15 min: preserve signed contest records before the ring or the 7-day
+# idle reclaim destroys them. sonnet-2 closes 2026-09-18; its rooms go ~09-25.
+write_plist "flop.capture" 300 capture --daemon
 
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 
