@@ -132,6 +132,10 @@ write_plist "flop.autopilot" 300 autopilot --daemon
 # Every ~10 min: hold the room name against the 7-day note reclaim, and open
 # the room the moment a slot frees in the capped room namespace.
 write_plist "flop.rooms" 600 rooms
+# Every 40 min until the contest closes: one recruitment post. Discovery carries
+# >10k records/day so a single post is buried within hours, but blasting is
+# disqualifiable spam. recruit exits quietly once the deadline passes.
+write_plist "flop.recruit" 2400 recruit
 
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 

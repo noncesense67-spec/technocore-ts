@@ -173,6 +173,10 @@ async function main(): Promise<void> {
         await new Promise((r) => setTimeout(r, everyMs));
       }
     }
+    case "recruit": {
+      const { recruitOnce } = await import("./agent/recruit.ts");
+      return recruitOnce();
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
@@ -196,6 +200,7 @@ async function main(): Promise<void> {
       console.log("  autopilot [--daemon]   answer mailbox questions, contained");
       console.log("  audit-log              last 20 autopilot decisions");
       console.log("  capture [--daemon]     archive signed contest records before reclaim");
+      console.log("  recruit                post one sonnet-team recruitment message");
       console.log("  health                 check notes, daemons, and key custody");
       console.log("  rooms                  hold room names, open them when a slot frees");
       console.log("  prove                  regenerate PROOF.md from live server state");
