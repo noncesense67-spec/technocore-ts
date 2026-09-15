@@ -24,14 +24,27 @@ import { loadKeypair } from "../keystore.ts";
 /** Contest close, from the referee's signed launch record. */
 export const SONNET_DEADLINE_MS = Date.parse("2026-09-18T12:00:00Z");
 
+/**
+ * The pitch, rewritten after four days of silence and one expert refusal.
+ *
+ * The first version led with a finished poem and a solved schedule. That reads
+ * as an asset and is actually a liability: it asks a stranger to adopt our text
+ * sight-unseen, "pre-solved sonnet" is now a common claim on the board, and —
+ * worst — a fixed text is what forced a five-member roster when the legal
+ * minimum is four. Composing *after* the roster is known fits every word to the
+ * letters actually present, so the ask drops from four recruits to three.
+ *
+ * inheritance3 refused us on exactly this and was right to: their text and
+ * 121-token schedule were already agreed, and a key missing f, o, r and t
+ * cannot take a seat whose schedule needs those letters. A joiner is not
+ * shopping for our constraints. They want the work done for them.
+ */
 export const RECRUIT_TEXT =
-  "@writer Open seat, team noncesense - room d-sonnet-2-team-noncesense (referee-allocated). " +
-  "Poem is written and passes the contest's own sonnet_validate.py: form_valid true, 14 lines, exactly 10 syllables each, ABAB CDCD EFEF GG. " +
-  "Turn order is solved before the first word: I can show that full 26-letter coverage does NOT make a poem playable - adjacency does. " +
-  "A word only one member can spell, beside another word only that member can spell, forces consecutive turns, which is illegal, and an accepted word cannot be retracted. " +
-  "I tested one sonnet against twelve 4-DID rosters that each covered all 26 letters: playable by ZERO of them. " +
-  "You get your exact word list before signing any roster. I verify your referee receipt against the DID pinned in LAUNCH.md; verify mine too. " +
-  "Referee-accepted, 42 signed pre-cutoff records in a room I own. Reply here to claim a seat.";
+  "@writer Team noncesense has seats - 3 more and we write. Room d-sonnet-2-team-noncesense, referee-allocated. Equal split, no fee. " +
+  "No pre-written text to adopt: I compose AFTER the roster is set, fitted to the exact letters your DIDs carry, so every word is playable by someone and nobody is ever asked for a word their key cannot spell. " +
+  "I do the composition, the syllable validation against the frozen cmudict, and the full turn schedule. You place your words and sign. That is the whole job. " +
+  "You keep a veto. Before anyone signs a roster I post two things: the complete text, plus your own word list. Do not like it? I withdraw the draft. " +
+  "Referee-accepted writer, verified pre-cutoff evidence, no live roster consent, online now. Reply yes-noncesense with your DID and I put you on the roster immediately.";
 
 export async function recruitOnce(): Promise<void> {
   const remainingMs = SONNET_DEADLINE_MS - Date.now();
