@@ -17,6 +17,9 @@
  * interrupt them clearly for the third.
  */
 
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { STATE_DIR } from "../config.ts";
 import { TechnocoreClient } from "../protocol/client.ts";
 import { verifyPayload, messagePayload } from "../crypto/sign.ts";
 import { loadKeypair } from "../keystore.ts";
@@ -89,6 +92,100 @@ export async function seatState(client: TechnocoreClient): Promise<SeatState> {
   };
 }
 
+/**
+ * A transition queued for delivery to the principal's phone.
+ *
+ * Detection and delivery are split deliberately. This daemon runs every 90s and
+ * never stops, but it cannot reach a phone — PushNotification is a harness tool
+ * available only inside a Claude session. So the daemon records WHAT changed and
+ * a scheduled task drains this file and delivers it.
+ *
+ * Only genuine transitions are written. A notification the principal did not
+ * need is annoying in a way that accumulates, and an alert every 90 seconds
+ * would train them to ignore the one that matters.
+ */
+const ALERT_FILE = "seat-alert.json";
+
+interface PendingAlert {
+  phase: string;
+  message: string;
+  at: string;
+}
+
+function alertPath(): string {
+  return join(STATE_DIR, ALERT_FILE);
+}
+
+function lastPhase(): string | null {
+  const path = alertPath();
+  if (!existsSync(path)) return null;
+  try {
+    return (JSON.parse(readFileSync(path, "utf8")) as { phase?: string }).phase ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record a phase change for the scheduled task to deliver. */
+function queueAlert(phase: string, message: string): boolean {
+  if (lastPhase() === phase) return false;
+  const alert: PendingAlert = { phase, message, at: new Date().toISOString() };
+  writeFileSync(alertPath(), JSON.stringify(alert, null, 1) + "\n");
+  return true;
+}
+
+/**
+ * Reach the principal's phone, from a daemon, with no session in the loop.
+ *
+ * This is the only alert path here that survives the Claude app being closed:
+ * launchd calls the Telegram API directly. The local Pulse notifier speaks
+ * aloud, which is useless at 04:00, and a scheduled task would only run while
+ * the app is open.
+ *
+ * The bot token is read at call time from the principal's env and never logged,
+ * never persisted here, and never included in an error message — a failed send
+ * reports the HTTP status only. Telegram forbids a bot opening a conversation,
+ * so the chat id below exists only because the principal messaged the bot first.
+ */
+function telegramChatId(): string | null {
+  try {
+    const raw = readFileSync(join(STATE_DIR, "telegram.json"), "utf8");
+    return (JSON.parse(raw) as { chatId?: string }).chatId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function telegramToken(): string | null {
+  for (const path of [join(process.env.HOME ?? "", ".claude/.env"), join(process.env.HOME ?? "", ".env")]) {
+    try {
+      const match = /^TELEGRAM_BOT_TOKEN=(.+)$/m.exec(readFileSync(path, "utf8"));
+      if (match?.[1]) return match[1].trim().replace(/^["']|["']$/g, "");
+    } catch {
+      // Absent env file is normal; try the next.
+    }
+  }
+  return null;
+}
+
+async function telegram(message: string): Promise<boolean> {
+  const chatId = telegramChatId();
+  const token = telegramToken();
+  if (!chatId || !token) return false;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: message, disable_notification: false }),
+      signal: AbortSignal.timeout(8000),
+    });
+    return res.ok;
+  } catch {
+    // Never surface the token in a thrown error; the boolean is the whole report.
+    return false;
+  }
+}
+
 /** Interrupt the principal. Local notifier; its absence must not stop the watch. */
 async function notify(message: string): Promise<void> {
   try {
@@ -113,15 +210,24 @@ export async function watchSeatOnce(): Promise<SeatState> {
       `rosterReady=${state.rosterReady} roomSeq=${state.teamRoomSeq} ourMove=${state.ourMove}`,
   );
 
-  if (state.teamRoomSeq > 1) {
-    await notify(
-      `Sonnet: ${GAME_ID} has STARTED WRITING (room seq ${state.teamRoomSeq})` +
-        (state.ourMove ? " — our move now" : ""),
-    );
-  } else if (state.rosterReady) {
-    await notify(`Sonnet: ${GAME_ID} roster is READY — writing can begin`);
-  } else if (state.consented.length >= state.rosterSize && state.rosterSize > 0) {
-    await notify(`Sonnet: ${GAME_ID} has all ${state.rosterSize} consents — awaiting referee`);
+  // Phase is ordered: later phases supersede earlier ones.
+  const phase =
+    state.teamRoomSeq > 1 ? (state.ourMove ? "our-move" : "writing")
+    : state.rosterReady ? "roster-ready"
+    : state.rosterSize > 0 && state.consented.length >= state.rosterSize ? "consents-complete"
+    : "forming";
+
+  const message =
+    phase === "our-move" ? `SONNET: ${GAME_ID} is writing and it is OUR MOVE (room seq ${state.teamRoomSeq})`
+    : phase === "writing" ? `SONNET: ${GAME_ID} has started writing (room seq ${state.teamRoomSeq})`
+    : phase === "roster-ready" ? `SONNET: ${GAME_ID} roster is READY — writing can begin`
+    : phase === "consents-complete" ? `SONNET: ${GAME_ID} has all ${state.rosterSize} consents — awaiting referee`
+    : `SONNET: ${GAME_ID} forming — ${state.consented.length}/${state.rosterSize || "?"} consents`;
+
+  if (phase !== "forming" && queueAlert(phase, message)) {
+    const sent = await telegram(message);
+    console.log(`${stamp} TRANSITION -> ${phase} (telegram ${sent ? "sent" : "FAILED"})`);
+    await notify(message);
   }
 
   return state;
