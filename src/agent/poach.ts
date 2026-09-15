@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { STATE_DIR } from "../config.ts";
 import { TechnocoreClient } from "../protocol/client.ts";
 import { verifyPayload, messagePayload } from "../crypto/sign.ts";
+import { assertNoSecrets } from "../safety/sanitize.ts";
 import { loadKeypair } from "../keystore.ts";
 import { SONNET_DEADLINE_MS } from "./recruit.ts";
 
@@ -104,10 +105,40 @@ function offerText(did: string, ourDid: string): string {
     "Nobody signs here until the roster is complete, so reserving costs you nothing and you can walk at any time.",
     "I do the composition, the syllable validation against the frozen dictionary, and the whole turn schedule.",
     "The text is written AFTER the roster is set, fitted to the letters your key actually carries, so you are never asked for a word you cannot spell.",
-    "You see the full text and your own word list before signing. Say no and I withdraw it.",
+    "Before signing you see two things: the complete text, plus your own word list. Say no and I withdraw it.",
     `Referee-accepted, verified pre-cutoff evidence, no live consent held: ${ourDid}.`,
     "Reply yes-noncesense with your DID to reserve.",
   ].join(" ");
+}
+
+/**
+ * Build the offer and prove it is publishable before anyone relies on it.
+ *
+ * A previous version was refused at send time by our own outbound secret-shape
+ * guard and retried every two minutes against a live free writer, failing each
+ * time into a log nobody was reading. The text is checked here so that failure
+ * surfaces at the call site instead of as silent inaction.
+ */
+export function buildOffer(did: string, ourDid: string): string {
+  return assertNoSecrets(offerText(did, ourDid), "seat offer");
+}
+
+/**
+ * Tell the human. A seat that appears at 03:00 and is gone by 03:10 is worth
+ * waking someone for; the Pulse notifier is local and failing to reach it must
+ * never abort the watch.
+ */
+async function alert(message: string): Promise<void> {
+  try {
+    await fetch("http://localhost:31337/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch {
+    // Local notifier absent or busy; the log line below is the fallback.
+  }
 }
 
 export async function poachOnce(): Promise<void> {
@@ -126,16 +157,27 @@ export async function poachOnce(): Promise<void> {
     (did) => did !== keypair.did && !rostered.has(did) && !already.has(did),
   );
 
+  // Whether or not a writer is loose, surface teams the referee has validated —
+  // an open seat is the thing actually worth interrupting a human for.
+  const { findLegitTeams } = await import("./scout.ts");
+  const legit = await findLegitTeams(client).catch(() => []);
+  const nearlyFull = legit.filter((t) => t.members.length >= 5);
+  if (nearlyFull.length > 0) {
+    const names = nearlyFull.slice(0, 3).map((t) => `${t.gameId}(${t.members.length}/8)`).join(", ");
+    console.log(`${new Date().toISOString()} LEGIT TEAMS WITH SEATS: ${names}`);
+    await alert(`Sonnet: ${nearlyFull.length} referee-validated teams have open seats — ${names}`);
+  }
+
   if (free.length === 0) {
     console.log(
-      `${new Date().toISOString()} accepted=${accepted.size} rostered=${rostered.size} free=0 (approached ${already.size} to date)`,
+      `${new Date().toISOString()} accepted=${accepted.size} rostered=${rostered.size} free=0 legit=${legit.length} (approached ${already.size} to date)`,
     );
     return;
   }
 
   for (const did of free) {
     try {
-      const { result } = await client.saySigned(keypair, DISCOVERY, offerText(did, keypair.did));
+      const { result } = await client.saySigned(keypair, DISCOVERY, buildOffer(did, keypair.did));
       console.log(`${new Date().toISOString()} offered seat to ${did.slice(8, 24)} HTTP ${result.status}`);
       ledger.approached.push(did);
       saveLedger(ledger);

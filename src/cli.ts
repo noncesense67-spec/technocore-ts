@@ -181,6 +181,23 @@ async function main(): Promise<void> {
       const { poachOnce } = await import("./agent/poach.ts");
       return poachOnce();
     }
+    case "scout": {
+      const { TechnocoreClient } = await import("./protocol/client.ts");
+      const { findLegitTeams } = await import("./agent/scout.ts");
+      const teams = await findLegitTeams(new TechnocoreClient());
+      if (teams.length === 0) {
+        console.log(`${new Date().toISOString()} no referee-validated team with an open seat`);
+        return;
+      }
+      console.log(`${new Date().toISOString()} ${teams.length} referee-validated team(s) with seats:`);
+      for (const t of teams.slice(0, 10)) {
+        console.log(
+          `  ${t.gameId.padEnd(20)} members=${t.members.length} seats=${t.seatsFree} gen=${t.generation} seq=${t.lastSeq}` +
+            (t.lastReason ? ` lastRefereeReason="${t.lastReason}"` : ""),
+        );
+      }
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();

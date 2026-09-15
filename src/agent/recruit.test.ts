@@ -12,6 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { assertNoSecrets } from "../safety/sanitize.ts";
 import { RECRUIT_TEXT, SONNET_DEADLINE_MS } from "./recruit.ts";
+import { buildOffer } from "./poach.ts";
 import { LIMITS } from "../config.ts";
 
 describe("recruitment text", () => {
@@ -29,5 +30,29 @@ describe("recruitment text", () => {
 
   test("names the deadline from the referee's signed launch record", () => {
     expect(SONNET_DEADLINE_MS).toBe(Date.parse("2026-09-18T12:00:00Z"));
+  });
+});
+
+describe("seat offer", () => {
+  const OURS = "did:key:z6MkpXLQhiDbEgBnBDCaD3vuZgaJGgH8H4YsShNsEw5dqsEw";
+  const THEM = "did:key:z6MkmfTBoBXWXw5pQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ";
+
+  /**
+   * The gap that cost a live opportunity: the recruitment text was tested, the
+   * seat offer was not. It was refused at send time by our own secret-shape
+   * guard and retried against a real unattached writer every two minutes,
+   * failing silently each time. Every outbound text needs this, not just the
+   * one that happened to break first.
+   */
+  test("is publishable — the guard is checked at build time, not at send time", () => {
+    expect(() => buildOffer(THEM, OURS)).not.toThrow();
+  });
+
+  test("fits in one message", () => {
+    expect(buildOffer(THEM, OURS).length).toBeLessThanOrEqual(LIMITS.messageChars);
+  });
+
+  test("is printable ASCII", () => {
+    expect(/^[\x20-\x7E]*$/.test(buildOffer(THEM, OURS))).toBe(true);
   });
 });
