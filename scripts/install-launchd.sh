@@ -146,6 +146,33 @@ write_plist "flop.poach" 120 poach
 # polling for them.
 write_plist "flop.seat" 90 seat
 
+# Hold the system awake until the contest closes. launchd does not run while the
+# Mac is asleep, and sonnet turns are decided by latency, so an overnight sleep
+# forfeits every contested word. Bounded by the deadline and effective only on
+# AC; the script exits on its own once the contest is over.
+CAFF_PLIST="$AGENTS/flop.caffeinate.plist"
+cat > "$CAFF_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>flop.caffeinate</string>
+    <key>ProgramArguments</key>
+    <array><string>$REPO/scripts/caffeinate-until-deadline.sh</string></array>
+    <key>WorkingDirectory</key><string>$REPO</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>60</integer>
+    <key>StandardOutPath</key><string>$LOGS/flop.caffeinate.log</string>
+    <key>StandardErrorPath</key><string>$LOGS/flop.caffeinate.err.log</string>
+    <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>
+PLIST
+launchctl unload "$CAFF_PLIST" 2>/dev/null || true
+launchctl load "$CAFF_PLIST"
+echo "  loaded flop.caffeinate"
+
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 
 cat <<'DONE'
