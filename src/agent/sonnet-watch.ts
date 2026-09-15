@@ -210,11 +210,15 @@ export async function watchSeatOnce(): Promise<SeatState> {
       `rosterReady=${state.rosterReady} roomSeq=${state.teamRoomSeq} ourMove=${state.ourMove}`,
   );
 
-  // Phase is ordered: later phases supersede earlier ones.
+  // Phase is ordered: later phases supersede earlier ones. Consent progress is
+  // part of the phase key so each teammate joining is its own one-time alert —
+  // the principal asked to hear about teammates, and there are at most two such
+  // events left on a four-member roster.
   const phase =
     state.teamRoomSeq > 1 ? (state.ourMove ? "our-move" : "writing")
     : state.rosterReady ? "roster-ready"
     : state.rosterSize > 0 && state.consented.length >= state.rosterSize ? "consents-complete"
+    : state.consented.length > 1 ? `forming-${state.consented.length}`
     : "forming";
 
   const message =
@@ -222,7 +226,7 @@ export async function watchSeatOnce(): Promise<SeatState> {
     : phase === "writing" ? `SONNET: ${GAME_ID} has started writing (room seq ${state.teamRoomSeq})`
     : phase === "roster-ready" ? `SONNET: ${GAME_ID} roster is READY — writing can begin`
     : phase === "consents-complete" ? `SONNET: ${GAME_ID} has all ${state.rosterSize} consents — awaiting referee`
-    : `SONNET: ${GAME_ID} forming — ${state.consented.length}/${state.rosterSize || "?"} consents`;
+    : `SONNET: teammate joined ${GAME_ID} — ${state.consented.length}/${state.rosterSize || "?"} consents signed`;
 
   if (phase !== "forming" && queueAlert(phase, message)) {
     const sent = await telegram(message);
