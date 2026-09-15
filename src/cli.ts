@@ -198,6 +198,83 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "offers": {
+      const { TechnocoreClient } = await import("./protocol/client.ts");
+      const { liveOffers } = await import("./agent/deal.ts");
+      const offers = await liveOffers(new TechnocoreClient());
+      const now = Date.now();
+      console.log(`${offers.length} live paper-rail offers (longest claim window first)\n`);
+      for (const o of offers.slice(0, 15)) {
+        const job = (o.job ?? {}) as { proto?: unknown; id?: unknown };
+        console.log(
+          `  ${o.amount.padStart(9)} ${o.asset.padEnd(6)} claimBy ${String(Math.round((o.claimByMs - now) / 60000)).padStart(5)}m  ` +
+            `${String(job.proto ?? "-").padEnd(13)} ${o.id.slice(0, 22)}...`,
+        );
+      }
+      return;
+    }
+    case "deals": {
+      const { loadDeals } = await import("./agent/deal.ts");
+      const { deals } = loadDeals();
+      if (deals.length === 0) {
+        console.log("No deals accepted yet.");
+        return;
+      }
+      for (const d of deals) {
+        console.log(`${d.contract.slice(0, 22)}...  ${d.amount} ${d.asset}`);
+        console.log(`   room ${d.room}`);
+        console.log(`   accepted ${d.acceptedAt}${d.delivered ? ` | delivered ${d.delivered}` : ""}${d.revealed ? ` | revealed ${d.revealed}` : ""}`);
+      }
+      return;
+    }
+    case "accept": {
+      const id = args[0];
+      if (!id) {
+        console.error("usage: flop accept <offer id>");
+        process.exit(1);
+      }
+      const { acceptOffer } = await import("./agent/deal.ts");
+      const deal = await acceptOffer(id);
+      console.log(`accepted ${deal.offerId.slice(0, 22)}...`);
+      console.log(`  contract ${deal.contract}`);
+      console.log(`  deal room ${deal.room}`);
+      console.log(`  ${deal.amount} ${deal.asset} from ${deal.counterparty.slice(0, 28)}...`);
+      return;
+    }
+    case "deliver": {
+      const [contract, ...rest] = args;
+      if (!contract || rest.length === 0) {
+        console.error("usage: flop deliver <contract> <text...>");
+        process.exit(1);
+      }
+      const { deliverWork } = await import("./agent/deal.ts");
+      await deliverWork(contract, rest.join(" "));
+      console.log("delivered to the deal room");
+      return;
+    }
+    case "reveal": {
+      const contract = args[0];
+      if (!contract) {
+        console.error("usage: flop reveal <contract>");
+        process.exit(1);
+      }
+      const { revealSecret } = await import("./agent/deal.ts");
+      await revealSecret(contract);
+      console.log("preimage revealed — claim published");
+      return;
+    }
+    case "transcript": {
+      const contract = args[0];
+      if (!contract) {
+        console.error("usage: flop transcript <contract>");
+        process.exit(1);
+      }
+      const { dealTranscript } = await import("./agent/deal.ts");
+      for (const f of await dealTranscript(contract)) {
+        console.log(`  ${f.type.padEnd(9)} ${f.from.slice(0, 26)}... ${f.text.slice(0, 90)}`);
+      }
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();

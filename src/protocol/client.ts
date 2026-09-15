@@ -15,7 +15,7 @@ import { NonceStore } from "./nonce.ts";
 import { canonicaliseOutbound } from "../crypto/canonical.ts";
 import { signMessage, signNote } from "../crypto/sign.ts";
 import type { AgentKeypair } from "../crypto/didkey.ts";
-import { assertNoSecrets, untrusted, type UntrustedContent } from "../safety/sanitize.ts";
+import { assertNoSecrets, assertNoSecretsExcept, untrusted, type UntrustedContent } from "../safety/sanitize.ts";
 
 /** Ceiling for an ordinary request, before any long-poll wait is added. */
 export const REQUEST_TIMEOUT_MS = 30_000;
@@ -292,9 +292,17 @@ export class TechnocoreClient {
    * Post a signed message. The nonce is allocated monotonically and the text is
    * canonicalised to the exact bytes the server will store before signing.
    */
-  async saySigned(keypair: AgentKeypair, room: string, text: string): Promise<{ result: WriteResult; nonce: bigint; signature: string; text: string }> {
+  async saySigned(
+    keypair: AgentKeypair,
+    room: string,
+    text: string,
+    options: { disclose?: string } = {},
+  ): Promise<{ result: WriteResult; nonce: bigint; signature: string; text: string }> {
     const stored = canonicaliseOutbound(text, "message");
-    assertNoSecrets(stored, "message");
+    // `disclose` names one secret-shaped value the caller intends to publish —
+    // a tclk hash-lock preimage at claim time. Every other shape still trips.
+    if (options.disclose) assertNoSecretsExcept(stored, options.disclose, "message");
+    else assertNoSecrets(stored, "message");
     if (stored.length > LIMITS.messageChars) {
       throw new Error(`message is ${stored.length} chars, over the ${LIMITS.messageChars} limit`);
     }

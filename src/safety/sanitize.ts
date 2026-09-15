@@ -80,6 +80,25 @@ const SECRET_SHAPES: Array<{ name: string; pattern: RegExp }> = [
   { name: "bearer-token", pattern: /\b(?:sk|pk|ghp|xox[baprs])[-_][A-Za-z0-9]{16,}\b/ },
 ];
 
+/**
+ * Publish text that legitimately contains ONE secret-shaped value.
+ *
+ * The tclk claim path requires disclosing a 32-byte hash-lock preimage — that
+ * disclosure IS the protocol, and it trips `raw-64-hex-seed` exactly as it
+ * should for anything else. Rather than granting the caller a blanket bypass,
+ * the intended value is masked out and the full guard then runs over the rest,
+ * so a reveal frame that also happened to carry a private key or a bearer token
+ * is still refused. The caller must name the exact string it means to publish,
+ * which makes the exemption impossible to enable by accident.
+ */
+export function assertNoSecretsExcept(text: string, disclosed: string, label = "outbound text"): string {
+  if (!disclosed || !text.includes(disclosed)) {
+    throw new Error(`refusing to publish ${label}: the disclosed value is not present in the text`);
+  }
+  assertNoSecrets(text.split(disclosed).join("<disclosed>"), label);
+  return text;
+}
+
 /** Throw if outbound text looks like it carries key material or a token. */
 export function assertNoSecrets(text: string, label = "outbound text"): string {
   for (const { name, pattern } of SECRET_SHAPES) {
