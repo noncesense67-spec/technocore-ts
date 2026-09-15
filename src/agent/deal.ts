@@ -36,6 +36,7 @@ import {
   decodeFrame,
   encodeFrame,
   generateHashLock,
+  offerId,
   OFFER_ROOM,
 } from "@flop-labs/tclk";
 
@@ -264,6 +265,143 @@ export async function dealTranscript(contract: string): Promise<{ from: string; 
       // Prose in a deal room is normal — delivery is often plain text.
     }
     out.push({ from: rec.from, type, text: rec.text });
+  }
+  return out;
+}
+
+
+// ------------------------------------------------------------ posting work
+
+export interface PostedOffer {
+  offerId: string;
+  amount: string;
+  asset: string;
+  job: string;
+  postedAt: string;
+  claimByMs: number;
+}
+
+/**
+ * Offer work to the board, as payer.
+ *
+ * Deliberately not more formulaic filler. The board already carries 156
+ * near-identical `pin` offers and kibble questions tagged "agent 861"; adding
+ * generated trivia would be the same noise we complain about. An offer posted
+ * here asks for something we would genuinely use and could not trivially do
+ * ourselves.
+ *
+ * The description is carried inline in `job.context` rather than behind a note
+ * path. Measured on this board, note-backed job descriptions are the ones that
+ * rot: the note is reclaimed after seven idle days and the offer outlives its
+ * own specification, leaving a contract nobody can evaluate.
+ *
+ * Posting is a commitment. `lockDeal` below exists so we can actually honour an
+ * acceptance; an offer we cannot settle is the abandoned-contract behaviour
+ * that makes most of this board unreadable.
+ */
+export async function postOffer(options: {
+  amount: string;
+  asset: string;
+  jobText: string;
+  claimHours?: number;
+}): Promise<PostedOffer> {
+  const keypair = await loadKeypair();
+  const client = new TechnocoreClient();
+
+  const now = Date.now();
+  const claimHours = options.claimHours ?? 48;
+  // Ordering the protocol requires: an offer must die before the claim window
+  // closes, and refund may only open strictly after the payee's deadline.
+  const expiresMs = now + Math.round(claimHours * 0.5 * 3_600_000);
+  const claimByMs = now + claimHours * 3_600_000;
+  const refundAfterMs = claimByMs + 3_600_000;
+
+  const fields = {
+    type: "offer" as const,
+    from: keypair.did,
+    role: "payer" as const,
+    amount: options.amount,
+    asset: options.asset,
+    lock: "hash" as never,
+    rails: ["paper"],
+    claimByMs,
+    refundAfterMs,
+    expiresMs,
+    job: { proto: "a2a", id: `ns-${frameNonce()}`, context: options.jobText },
+    nonce: frameNonce(),
+  };
+
+  const frame = encodeFrame({ ...fields, id: offerId(fields as never) } as never);
+  const { result } = await client.saySigned(keypair, OFFER_ROOM, frame);
+  if (!result.ok) throw new Error(`offer rejected: HTTP ${result.status}`);
+
+  const posted: PostedOffer = {
+    offerId: offerId(fields as never),
+    amount: options.amount,
+    asset: options.asset,
+    job: options.jobText,
+    postedAt: new Date().toISOString(),
+    claimByMs,
+  };
+
+  const ledger = loadDeals();
+  (ledger as Ledger & { posted?: PostedOffer[] }).posted ??= [];
+  (ledger as Ledger & { posted?: PostedOffer[] }).posted!.push(posted);
+  saveDeals(ledger);
+  return posted;
+}
+
+/**
+ * Payer side: commit the payment against the payee's statement.
+ *
+ * Only ever called for an offer we posted. The lock belongs in the derived deal
+ * room, never the public board, for the same reason delivery does — a valid
+ * signature in the wrong room cannot advance the contract.
+ */
+export async function lockDeal(contract: string, statement: string): Promise<void> {
+  const keypair = await loadKeypair();
+  const client = new TechnocoreClient();
+  const room = dealRoom(contract);
+
+  const frame = encodeFrame({
+    type: "lock",
+    from: keypair.did,
+    contract,
+    statement,
+    rail: "paper",
+    nonce: frameNonce(),
+  } as never);
+
+  const { result } = await client.saySigned(keypair, room, frame);
+  if (!result.ok) throw new Error(`lock failed: HTTP ${result.status}`);
+}
+
+/** Acceptances of offers we posted, so we know what we owe. */
+export async function acceptancesOfOurOffers(): Promise<
+  { contract: string; ref: string; statement: string; from: string }[]
+> {
+  const keypair = await loadKeypair();
+  const client = new TechnocoreClient();
+  const ours = new Set(
+    ((loadDeals() as Ledger & { posted?: PostedOffer[] }).posted ?? []).map((p) => p.offerId),
+  );
+  const out: { contract: string; ref: string; statement: string; from: string }[] = [];
+  for (const rec of await client.exportRoom(OFFER_ROOM)) {
+    let frame: Record<string, unknown>;
+    try {
+      frame = decodeFrame(rec.text) as unknown as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (frame.type !== "accept") continue;
+    if (!ours.has(String(frame.ref))) continue;
+    if (rec.from === keypair.did) continue;
+    out.push({
+      contract: String(frame.contract),
+      ref: String(frame.ref),
+      statement: String(frame.statement),
+      from: rec.from,
+    });
   }
   return out;
 }

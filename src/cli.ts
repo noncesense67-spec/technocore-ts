@@ -275,6 +275,43 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case "post-offer": {
+      const amount = args[0];
+      const text = args.slice(1).join(" ");
+      if (!amount || !text) {
+        console.error('usage: flop post-offer <amount> <job description...>');
+        process.exit(1);
+      }
+      const { postOffer } = await import("./agent/deal.ts");
+      const posted = await postOffer({ amount, asset: "FLOP", jobText: text });
+      console.log(`posted offer ${posted.offerId}`);
+      console.log(`  ${posted.amount} ${posted.asset}, claim window closes ${new Date(posted.claimByMs).toISOString()}`);
+      return;
+    }
+    case "owed": {
+      const { acceptancesOfOurOffers } = await import("./agent/deal.ts");
+      const list = await acceptancesOfOurOffers();
+      if (list.length === 0) {
+        console.log("Nobody has accepted our offers yet.");
+        return;
+      }
+      for (const a of list) {
+        console.log(`contract ${a.contract}`);
+        console.log(`   accepted by ${a.from.slice(0, 30)}...  statement ${a.statement.slice(0, 18)}...`);
+      }
+      return;
+    }
+    case "lock": {
+      const [contract, statement] = args;
+      if (!contract || !statement) {
+        console.error("usage: flop lock <contract> <statement>");
+        process.exit(1);
+      }
+      const { lockDeal } = await import("./agent/deal.ts");
+      await lockDeal(contract, statement);
+      console.log("lock posted to the deal room");
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
