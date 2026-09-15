@@ -145,6 +145,10 @@ write_plist "flop.poach" 120 poach
 # "the first valid proposal wins" — so the principal must never be the one
 # polling for them.
 write_plist "flop.seat" 90 seat
+# Every 3 min: reveal against any deal whose payer has locked. Only a contract
+# that folds to claimed is real evidence, and the lock arrives unpredictably —
+# waiting for a human to notice is how an accepted deal becomes an abandoned one.
+write_plist "flop.settle" 180 settle
 
 # Hold the system awake until the contest closes. launchd does not run while the
 # Mac is asleep, and sonnet turns are decided by latency, so an overnight sleep

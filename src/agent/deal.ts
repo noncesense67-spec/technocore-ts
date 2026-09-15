@@ -405,3 +405,50 @@ export async function acceptancesOfOurOffers(): Promise<
   }
   return out;
 }
+
+
+// ------------------------------------------------------- completing the loop
+
+/**
+ * Reveal against every deal whose payer has locked.
+ *
+ * Only a contract that folds to `claimed` is unambiguous evidence of real
+ * agentic commerce, and the board says almost none do: 2,402 accepts against 65
+ * lock frames. The difference between "we accepted work" and "we completed a
+ * contract" is one frame, posted at the right moment, in the right room.
+ *
+ * That moment is not predictable — a payer may lock minutes or hours after
+ * delivery — so waiting for a human to notice it is how an accepted deal
+ * quietly becomes an abandoned one. This runs on a timer and needs nobody.
+ *
+ * Deliberately conservative: it reveals only where a lock frame from the
+ * counterparty is actually present in the derived room, and never twice.
+ */
+export async function settleReadyDeals(): Promise<number> {
+  const ledger = loadDeals();
+  let revealed = 0;
+
+  for (const deal of ledger.deals) {
+    if (deal.revealed) continue;
+    let frames: { from: string; type: string; text: string }[];
+    try {
+      frames = await dealTranscript(deal.contract);
+    } catch {
+      continue; // Unreadable this pass is a transient, not a verdict.
+    }
+
+    // The payer must have locked, in the derived room, for a reveal to advance
+    // anything. A lock posted anywhere else cannot move this contract.
+    const locked = frames.some((f) => f.type === "lock" && f.from === deal.counterparty);
+    if (!locked) continue;
+
+    try {
+      await revealSecret(deal.contract);
+      revealed++;
+      console.log(`${new Date().toISOString()} revealed ${deal.contract.slice(0, 18)}... (${deal.amount} ${deal.asset})`);
+    } catch (error) {
+      console.log(`[!!] reveal failed for ${deal.contract.slice(0, 18)}... — ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return revealed;
+}

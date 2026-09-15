@@ -317,6 +317,12 @@ async function main(): Promise<void> {
       await watchSeatOnce();
       return;
     }
+    case "settle": {
+      const { settleReadyDeals } = await import("./agent/deal.ts");
+      const n = await settleReadyDeals();
+      if (n === 0) console.log(`${new Date().toISOString()} no deals ready to reveal`);
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();
