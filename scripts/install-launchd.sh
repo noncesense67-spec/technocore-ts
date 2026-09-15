@@ -136,6 +136,11 @@ write_plist "flop.rooms" 600 rooms
 # >10k records/day so a single post is buried within hours, but blasting is
 # disqualifiable spam. recruit exits quietly once the deadline passes.
 write_plist "flop.recruit" 2400 recruit
+# Every 2 min until close: catch newly-accepted writers before another captain
+# does. Measured: the unattached pool is zero at any instant — writers are
+# rostered within minutes of their acceptance receipt, so detection latency is
+# the whole game. One offer per DID, ever; the ledger enforces it.
+write_plist "flop.poach" 120 poach
 
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 

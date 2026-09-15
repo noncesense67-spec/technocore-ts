@@ -177,6 +177,10 @@ async function main(): Promise<void> {
       const { recruitOnce } = await import("./agent/recruit.ts");
       return recruitOnce();
     }
+    case "poach": {
+      const { poachOnce } = await import("./agent/poach.ts");
+      return poachOnce();
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();

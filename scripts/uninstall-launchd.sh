@@ -4,7 +4,7 @@ set -euo pipefail
 
 AGENTS="$HOME/Library/LaunchAgents"
 
-for label in flop.claim flop.keepalive flop.autopilot flop.audit flop.rooms flop.recruit flop.capture; do
+for label in flop.claim flop.keepalive flop.autopilot flop.audit flop.rooms flop.recruit flop.poach flop.capture; do
   plist="$AGENTS/$label.plist"
   if [[ -f "$plist" ]]; then
     launchctl unload "$plist" 2>/dev/null || true
