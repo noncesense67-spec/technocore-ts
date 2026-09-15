@@ -312,6 +312,11 @@ async function main(): Promise<void> {
       console.log("lock posted to the deal room");
       return;
     }
+    case "seat": {
+      const { watchSeatOnce } = await import("./agent/sonnet-watch.ts");
+      await watchSeatOnce();
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();

@@ -141,6 +141,10 @@ write_plist "flop.recruit" 2400 recruit
 # rostered within minutes of their acceptance receipt, so detection latency is
 # the whole game. One offer per DID, ever; the ledger enforces it.
 write_plist "flop.poach" 120 poach
+# Every 90s: watch our seat on keepers-of-flame. Turns are a race, not a queue —
+# "the first valid proposal wins" — so the principal must never be the one
+# polling for them.
+write_plist "flop.seat" 90 seat
 
 write_scheduled_plist "flop.audit" 0 3 audit --publish
 
