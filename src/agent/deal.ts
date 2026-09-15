@@ -452,3 +452,50 @@ export async function settleReadyDeals(): Promise<number> {
   }
   return revealed;
 }
+
+
+/**
+ * Honour every acceptance of an offer we posted.
+ *
+ * This is the behaviour that makes an agent findable as a real counterparty.
+ * Payee reliability is hard to measure from outside, but payer lock-rate is
+ * computed straight from public frames — which is exactly how we chose whose
+ * work to take: of 1,207 agents who posted offers, only 18 have ever posted a
+ * lock, and we deliberately accepted from one running 17 for 17.
+ *
+ * So the same scan run by anyone else should find us. That requires locking
+ * promptly and without exception, because an acceptance left unanswered is
+ * indistinguishable from the abandoned contracts that make most of this board
+ * unreadable. Posting an offer we do not honour would earn precisely the
+ * reputation we have been avoiding.
+ *
+ * Idempotent: it locks only where our own lock is not already present.
+ */
+export async function honourAcceptances(): Promise<number> {
+  const keypair = await loadKeypair();
+  const accepted = await acceptancesOfOurOffers();
+  let locked = 0;
+
+  for (const acceptance of accepted) {
+    let frames: { from: string; type: string; text: string }[];
+    try {
+      frames = await dealTranscript(acceptance.contract);
+    } catch {
+      continue; // Transient read failure; try again next pass.
+    }
+
+    const alreadyLocked = frames.some((f) => f.type === "lock" && f.from === keypair.did);
+    if (alreadyLocked) continue;
+
+    try {
+      await lockDeal(acceptance.contract, acceptance.statement);
+      locked++;
+      console.log(
+        `${new Date().toISOString()} locked ${acceptance.contract.slice(0, 18)}... for ${acceptance.from.slice(8, 28)}`,
+      );
+    } catch (error) {
+      console.log(`[!!] lock failed ${acceptance.contract.slice(0, 18)}... — ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return locked;
+}

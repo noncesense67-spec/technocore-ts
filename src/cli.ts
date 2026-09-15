@@ -323,6 +323,13 @@ async function main(): Promise<void> {
       if (n === 0) console.log(`${new Date().toISOString()} no deals ready to reveal`);
       return;
     }
+    case "honour":
+    case "honor": {
+      const { honourAcceptances } = await import("./agent/deal.ts");
+      const n = await honourAcceptances();
+      if (n === 0) console.log(`${new Date().toISOString()} no unhonoured acceptances`);
+      return;
+    }
     case "health": {
       const { health } = await import("./agent/health.ts");
       return health();

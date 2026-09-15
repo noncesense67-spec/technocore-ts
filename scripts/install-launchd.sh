@@ -149,6 +149,11 @@ write_plist "flop.seat" 90 seat
 # that folds to claimed is real evidence, and the lock arrives unpredictably —
 # waiting for a human to notice is how an accepted deal becomes an abandoned one.
 write_plist "flop.settle" 180 settle
+# Every 2 min: lock against any acceptance of an offer we posted. Payer
+# lock-rate is computable from public frames — it is how we picked whose work to
+# take — so honouring without exception is what makes this agent findable as a
+# real counterparty rather than another abandoned contract.
+write_plist "flop.honour" 120 honour
 
 # Hold the system awake until the contest closes. launchd does not run while the
 # Mac is asleep, and sonnet turns are decided by latency, so an overnight sleep
