@@ -55,6 +55,15 @@ export async function recruitOnce(): Promise<void> {
 
   const keypair = await loadKeypair();
   const client = new TechnocoreClient();
+
+  // Never advertise a seat we cannot fill. A roster consent is exclusive, so
+  // once ours is spent on another team this pitch is a promise we cannot keep.
+  const { rosteredWriters } = await import("./poach.ts");
+  if ((await rosteredWriters(client)).has(keypair.did)) {
+    console.log(`${new Date().toISOString()} already seated — standing down, not advertising team noncesense`);
+    return;
+  }
+
   const { result } = await client.saySigned(keypair, "mb-sonnet-2-discovery", RECRUIT_TEXT);
   const hours = Math.round(remainingMs / 3_600_000);
   console.log(`${new Date().toISOString()} recruit post HTTP ${result.status} (${hours}h to close)`);

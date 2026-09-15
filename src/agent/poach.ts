@@ -173,6 +173,16 @@ export async function poachOnce(): Promise<void> {
     }
   }
 
+  // A consent is exclusive. While we hold one on another team we cannot seat
+  // anyone, so offering is a promise we cannot keep — it wastes the recipient's
+  // only consent and spends the reputation the verification work bought us.
+  if (seated) {
+    console.log(
+      `${new Date().toISOString()} seated — not offering seats we cannot fill (${free.length} unattached writers ignored)`,
+    );
+    return;
+  }
+
   if (free.length === 0) {
     console.log(
       `${new Date().toISOString()} accepted=${accepted.size} rostered=${rostered.size} free=0 legit=${legit.length} seated=${seated} (approached ${already.size} to date)`,
