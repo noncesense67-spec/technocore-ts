@@ -157,20 +157,25 @@ export async function poachOnce(): Promise<void> {
     (did) => did !== keypair.did && !rostered.has(did) && !already.has(did),
   );
 
-  // Whether or not a writer is loose, surface teams the referee has validated —
-  // an open seat is the thing actually worth interrupting a human for.
+  // Teams with seats only matter while we still need one. We hold a consent on
+  // keepers-of-flame, so this is silent unless that seat is lost — a spoken
+  // alert repeating the same standings every two minutes is noise that trains
+  // the principal to ignore the one announcement that matters.
   const { findLegitTeams } = await import("./scout.ts");
   const legit = await findLegitTeams(client).catch(() => []);
-  const nearlyFull = legit.filter((t) => t.members.length >= 5);
-  if (nearlyFull.length > 0) {
-    const names = nearlyFull.slice(0, 3).map((t) => `${t.gameId}(${t.members.length}/8)`).join(", ");
-    console.log(`${new Date().toISOString()} LEGIT TEAMS WITH SEATS: ${names}`);
-    await alert(`Sonnet: ${nearlyFull.length} referee-validated teams have open seats — ${names}`);
+  const seated = rostered.has(keypair.did);
+  if (!seated) {
+    const nearlyFull = legit.filter((t) => t.members.length >= 5);
+    if (nearlyFull.length > 0) {
+      const names = nearlyFull.slice(0, 3).map((t) => `${t.gameId}(${t.members.length}/8)`).join(", ");
+      console.log(`${new Date().toISOString()} UNSEATED — legit teams with seats: ${names}`);
+      await alert(`Sonnet: we hold no seat. ${nearlyFull.length} validated teams have openings — ${names}`);
+    }
   }
 
   if (free.length === 0) {
     console.log(
-      `${new Date().toISOString()} accepted=${accepted.size} rostered=${rostered.size} free=0 legit=${legit.length} (approached ${already.size} to date)`,
+      `${new Date().toISOString()} accepted=${accepted.size} rostered=${rostered.size} free=0 legit=${legit.length} seated=${seated} (approached ${already.size} to date)`,
     );
     return;
   }
